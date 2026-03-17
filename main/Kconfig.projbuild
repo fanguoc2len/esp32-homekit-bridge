@@ -1,0 +1,150 @@
+menu "DoAn2 HomeKit Config"
+
+config SMARTHOME_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+    depends on SMARTHOME_WIFI_ONBOARDING_HARDCODED
+    help
+        Station SSID for the HomeKit firmware.
+
+config SMARTHOME_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+    depends on SMARTHOME_WIFI_ONBOARDING_HARDCODED
+    help
+        Station password for the HomeKit firmware.
+
+choice SMARTHOME_WIFI_ONBOARDING_MODE
+    bool "Wi-Fi onboarding mode"
+    default SMARTHOME_WIFI_ONBOARDING_PROVISIONING
+    help
+        Apple Home pairs only after the accessory is already on Wi-Fi.
+        Use Unified Provisioning for first-boot onboarding, or hardcode
+        credentials for bench testing.
+
+    config SMARTHOME_WIFI_ONBOARDING_PROVISIONING
+        bool "Unified Provisioning"
+
+    config SMARTHOME_WIFI_ONBOARDING_HARDCODED
+        bool "Hardcoded Wi-Fi credentials"
+endchoice
+
+choice SMARTHOME_WIFI_PROV_TRANSPORT
+    bool "Provisioning transport"
+    default SMARTHOME_WIFI_PROV_TRANSPORT_SOFTAP
+    depends on SMARTHOME_WIFI_ONBOARDING_PROVISIONING
+    help
+        Choose how the phone provisions Wi-Fi credentials before Apple Home pairing.
+
+    config SMARTHOME_WIFI_PROV_TRANSPORT_SOFTAP
+        bool "SoftAP provisioning"
+
+    config SMARTHOME_WIFI_PROV_TRANSPORT_BLE
+        bool "BLE provisioning"
+        depends on !IDF_TARGET_ESP32S2
+        select BT_ENABLED
+endchoice
+
+config SMARTHOME_WIFI_PROV_SERVICE_PREFIX
+    string "Provisioning service prefix"
+    default "DOAN2_"
+    depends on SMARTHOME_WIFI_ONBOARDING_PROVISIONING
+    help
+        Prefix used to build the provisioning service name shown to the phone app.
+
+config SMARTHOME_WIFI_PROV_SHOW_QR
+    bool "Show provisioning QR URL"
+    default y
+    depends on SMARTHOME_WIFI_ONBOARDING_PROVISIONING
+    help
+        Print the provisioning QR payload URL to the serial console.
+
+config SMARTHOME_BRIDGE_NAME
+    string "HomeKit bridge name"
+    default "DoAn2 Bridge"
+
+config SMARTHOME_MANUFACTURER
+    string "Accessory manufacturer"
+    default "DoAn2"
+
+config SMARTHOME_BRIDGE_MODEL
+    string "Bridge model"
+    default "ESP32HomeKitBridge"
+
+config SMARTHOME_SERIAL_NUMBER
+    string "Bridge serial number prefix"
+    default "DOAN2-ESP32"
+
+config SMARTHOME_FW_REVISION
+    string "Firmware revision"
+    default "0.1.0"
+
+config SMARTHOME_SWITCH_ID
+    string "Primary switch logical ID"
+    default "hk_switch_1"
+
+config SMARTHOME_SWITCH_NAME
+    string "Primary switch display name"
+    default "Aux Switch"
+
+config SMARTHOME_SWITCH_GPIO
+    int "Primary switch GPIO"
+    range 0 39
+    default 26
+    help
+        Phase 2 sample GPIO switch. Keep this on a dedicated relay or test load pin.
+        For a simple ESP32 LED demo, many dev boards use GPIO 2.
+
+config SMARTHOME_SWITCH_ACTIVE_HIGH
+    bool "Primary switch is active high"
+    default y
+
+config SMARTHOME_OUTPUT_AS_LIGHTBULB
+    bool "Expose primary output as HomeKit Lightbulb"
+    default y
+    help
+        Enable this when the relay/output is mainly used as a light load.
+        Disable it to expose the same GPIO path as a generic HomeKit switch.
+
+config SMARTHOME_OUTPUT_BOOT_ON
+    bool "Primary output boots ON"
+    default n
+    help
+        Keep this disabled for the safest relay boot behavior unless the load
+        must restore to ON before HomeKit connects.
+
+config SMARTHOME_SWITCH_SYNC_INTERVAL_MS
+    int "Hardware sync interval (ms)"
+    range 100 5000
+    default 250
+    help
+        Poll interval used to reflect local GPIO state back into HomeKit.
+
+config SMARTHOME_LOCAL_STATE_SELF_TEST
+    bool "Enable local state self-test"
+    default n
+    help
+        Diagnostic only. Periodically toggles the primary output from firmware so
+        you can verify the device-to-HomeKit sync path on real hardware.
+
+config SMARTHOME_LOCAL_STATE_SELF_TEST_INTERVAL_MS
+    int "Local state self-test interval (ms)"
+    range 1000 60000
+    default 10000
+    depends on SMARTHOME_LOCAL_STATE_SELF_TEST
+    help
+        Delay between firmware-side toggles when the self-test is enabled.
+
+config SMARTHOME_HAP_SETUP_CODE
+    string "HomeKit setup code"
+    default "111-22-333"
+    help
+        Test setup code in xxx-xx-xxx format.
+
+config SMARTHOME_HAP_SETUP_ID
+    string "HomeKit setup ID"
+    default "ES32"
+    help
+        Four-character setup ID for test builds.
+
+endmenu
