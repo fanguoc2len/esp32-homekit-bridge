@@ -48,6 +48,7 @@ export ESP_HOMEKIT_SDK_PATH=/path/to/esp-homekit-sdk
 See `PAIRING.md` for first-boot onboarding, Home app pairing, and recovery/reset flow.
 See `LED_DEMO.md` for the quickest Apple Home demo using a single ESP32 LED.
 See `ROADMAP.md` for the migration sequence from the original DoAn2 system.
+See `MIGRATION_MAP.md` for the device-by-device mapping from DoAn2 features to HomeKit services.
 
 ## Notes
 
