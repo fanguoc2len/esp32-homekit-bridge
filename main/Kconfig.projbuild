@@ -93,7 +93,21 @@ config SMARTHOME_SWITCH_GPIO
     default 26
     help
         Phase 2 sample GPIO switch. Keep this on a dedicated relay or test load pin.
-        For a simple ESP32 LED demo, many dev boards use GPIO 2.
+        For a simple ESP32 LED demo, many dev boards use GPIO 2. For a NeoPixel
+        demo, this becomes the data pin for the LED.
+
+choice SMARTHOME_PRIMARY_OUTPUT_DRIVER
+    bool "Primary output hardware driver"
+    default SMARTHOME_PRIMARY_OUTPUT_DRIVER_GPIO
+    help
+        Select how the primary HomeKit output is driven on hardware.
+
+    config SMARTHOME_PRIMARY_OUTPUT_DRIVER_GPIO
+        bool "Plain GPIO on/off"
+
+    config SMARTHOME_PRIMARY_OUTPUT_DRIVER_NEOPIXEL
+        bool "NeoPixel / WS2812 RGB"
+endchoice
 
 config SMARTHOME_SWITCH_ACTIVE_HIGH
     bool "Primary switch is active high"

@@ -20,6 +20,12 @@
 #define SMARTHOME_CFG_OUTPUT_BOOT_ON false
 #endif
 
+#ifdef CONFIG_SMARTHOME_PRIMARY_OUTPUT_DRIVER_NEOPIXEL
+#define SMARTHOME_CFG_OUTPUT_DRIVER 1
+#else
+#define SMARTHOME_CFG_OUTPUT_DRIVER 0
+#endif
+
 /*
  * The sample HomeKit switch path intentionally uses its own configurable GPIO.
  * This keeps the migration isolated from the existing Arduino sketch pins while
@@ -36,6 +42,7 @@ static const board_profile_t s_board_profile = {
         .name = CONFIG_SMARTHOME_SWITCH_NAME,
         .homekit_lightbulb = SMARTHOME_CFG_OUTPUT_AS_LIGHTBULB,
         .gpio = CONFIG_SMARTHOME_SWITCH_GPIO,
+        .output_driver = SMARTHOME_CFG_OUTPUT_DRIVER,
         .active_high = SMARTHOME_CFG_SWITCH_ACTIVE_HIGH,
         .boot_on = SMARTHOME_CFG_OUTPUT_BOOT_ON,
         .enabled = true,

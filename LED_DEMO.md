@@ -8,6 +8,8 @@ This is the fastest path in this repository to get one ESP32 LED visible in Appl
 - Lets Apple Home toggle that output on and off
 - Prints pairing info to the serial monitor after Wi-Fi onboarding
 
+If you want full RGB color controls instead of simple on/off, use `NEOPIXEL_DEMO.md`.
+
 ## Hardware
 
 - ESP32 dev board

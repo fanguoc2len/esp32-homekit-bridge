@@ -21,6 +21,21 @@ static SemaphoreHandle_t s_state_lock;
 static state_entry_t s_entries[APP_MAX_DEVICES];
 static observer_entry_t s_observers[APP_MAX_OBSERVERS];
 
+static bool state_store_state_equal(const app_device_state_t *lhs, const app_device_state_t *rhs)
+{
+    if (!lhs || !rhs) {
+        return false;
+    }
+
+    return lhs->on == rhs->on
+        && lhs->brightness == rhs->brightness
+        && lhs->hue == rhs->hue
+        && lhs->saturation == rhs->saturation
+        && lhs->rotation_speed == rhs->rotation_speed
+        && lhs->temperature_c == rhs->temperature_c
+        && lhs->humidity_percent == rhs->humidity_percent;
+}
+
 static state_entry_t *state_store_find_entry(const char *device_id)
 {
     size_t i;
@@ -63,6 +78,12 @@ esp_err_t state_store_init(void)
     for (i = 0; i < device_registry_count() && i < APP_MAX_DEVICES; i++) {
         s_entries[i].device = device_registry_get(i);
         s_entries[i].used = (s_entries[i].device != NULL);
+        if (s_entries[i].used) {
+            s_entries[i].state.on = s_entries[i].device->boot_on;
+            s_entries[i].state.brightness = 100;
+            s_entries[i].state.hue = 0.0f;
+            s_entries[i].state.saturation = 0.0f;
+        }
     }
 
     return ESP_OK;
@@ -88,12 +109,29 @@ esp_err_t state_store_register_observer(state_store_observer_t observer, void *c
 
 esp_err_t state_store_set_on(const char *device_id, bool on, app_state_source_t source)
 {
+    app_device_state_t state = {0};
+
+    if (!device_id) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (state_store_get(device_id, &state) != ESP_OK) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    state.on = on;
+    return state_store_set_state(device_id, &state, source);
+}
+
+esp_err_t state_store_set_state(const char *device_id,
+                                const app_device_state_t *state,
+                                app_state_source_t source)
+{
     state_entry_t *entry;
     app_device_state_t snapshot;
     const app_device_config_t *device;
     bool changed;
 
-    if (!device_id) {
+    if (!device_id || !state) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -107,8 +145,8 @@ esp_err_t state_store_set_on(const char *device_id, bool on, app_state_source_t 
         return ESP_ERR_NOT_FOUND;
     }
 
-    changed = (entry->state.on != on);
-    entry->state.on = on;
+    changed = !state_store_state_equal(&entry->state, state);
+    entry->state = *state;
     snapshot = entry->state;
     device = entry->device;
 

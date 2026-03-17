@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "driver/gpio.h"
 
@@ -9,6 +10,7 @@ typedef struct {
     const char *name;
     bool homekit_lightbulb;
     gpio_num_t gpio;
+    uint8_t output_driver;
     bool active_high;
     bool boot_on;
     bool enabled;

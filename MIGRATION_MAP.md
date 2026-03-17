@@ -52,6 +52,10 @@ Recommendation:
 - keep custom effect modes as optional firmware-side extensions outside the
   standard Apple Home UI
 
+Status in this repo:
+
+- on/off + brightness + hue + saturation are now implemented for the NeoPixel driver path
+
 ### 2. Fan
 
 Original capabilities:

@@ -21,6 +21,9 @@ typedef struct {
     hap_acc_t *accessory;
     hap_serv_t *service;
     hap_char_t *on_char;
+    hap_char_t *brightness_char;
+    hap_char_t *hue_char;
+    hap_char_t *saturation_char;
     char serial_number[32];
 } hk_output_binding_t;
 
@@ -91,12 +94,36 @@ static void hk_state_observer(const app_device_config_t *device,
 
     value.b = state->on;
     hap_char_update_val(binding->on_char, &value);
-    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> %s", device->id, state->on ? "ON" : "OFF");
+    if (binding->brightness_char) {
+        value = (hap_val_t) {
+            .i = state->brightness,
+        };
+        hap_char_update_val(binding->brightness_char, &value);
+    }
+    if (binding->hue_char) {
+        value = (hap_val_t) {
+            .f = state->hue,
+        };
+        hap_char_update_val(binding->hue_char, &value);
+    }
+    if (binding->saturation_char) {
+        value = (hap_val_t) {
+            .f = state->saturation,
+        };
+        hap_char_update_val(binding->saturation_char, &value);
+    }
+    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f",
+             device->id,
+             state->on,
+             state->brightness,
+             (double) state->hue,
+             (double) state->saturation);
 }
 
 static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_priv, void *write_priv)
 {
     const app_device_config_t *device = serv_priv;
+    app_device_state_t next_state = {0};
     int i;
     int ret = HAP_SUCCESS;
 
@@ -108,26 +135,73 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
         return HAP_FAIL;
     }
 
+    if (state_store_get(device->id, &next_state) != ESP_OK) {
+        next_state.on = device->boot_on;
+        next_state.brightness = 100;
+        next_state.hue = 0.0f;
+        next_state.saturation = 0.0f;
+    }
+
     for (i = 0; i < count; i++) {
         hap_write_data_t *write = &write_data[i];
+        const char *uuid = hap_char_get_type_uuid(write->hc);
 
-        if (!strcmp(hap_char_get_type_uuid(write->hc), HAP_CHAR_UUID_ON)) {
-            esp_err_t err = command_router_apply_on(device->id, write->val.b, APP_STATE_SOURCE_HOMEKIT);
-            if (err == ESP_OK) {
-                hap_char_update_val(write->hc, &(write->val));
-                *(write->status) = HAP_STATUS_SUCCESS;
-                ESP_LOGI(TAG, "HomeKit command applied: %s -> %s", device->id, write->val.b ? "ON" : "OFF");
-            } else {
-                *(write->status) = HAP_STATUS_RES_ABSENT;
-                ret = HAP_FAIL;
-                ESP_LOGE(TAG, "Failed to apply HomeKit command for %s", device->id);
+        *(write->status) = HAP_STATUS_VAL_INVALID;
+
+        if (!strcmp(uuid, HAP_CHAR_UUID_ON)) {
+            next_state.on = write->val.b;
+            if (next_state.on && next_state.brightness <= 0) {
+                next_state.brightness = 100;
             }
+            *(write->status) = HAP_STATUS_SUCCESS;
+        } else if (!strcmp(uuid, HAP_CHAR_UUID_BRIGHTNESS) && device->supports_brightness) {
+            next_state.brightness = write->val.i;
+            next_state.on = (next_state.brightness > 0);
+            *(write->status) = HAP_STATUS_SUCCESS;
+        } else if (!strcmp(uuid, HAP_CHAR_UUID_HUE) && device->supports_hue) {
+            next_state.hue = write->val.f;
+            *(write->status) = HAP_STATUS_SUCCESS;
+        } else if (!strcmp(uuid, HAP_CHAR_UUID_SATURATION) && device->supports_saturation) {
+            next_state.saturation = write->val.f;
+            *(write->status) = HAP_STATUS_SUCCESS;
         } else {
             *(write->status) = HAP_STATUS_RES_ABSENT;
+            ret = HAP_FAIL;
         }
     }
 
-    return ret;
+    if (ret != HAP_SUCCESS) {
+        return ret;
+    }
+
+    if (device->kind == APP_DEVICE_KIND_LIGHT
+        && (device->supports_brightness || device->supports_hue || device->supports_saturation)) {
+        if (command_router_apply_light_state(device->id, &next_state, APP_STATE_SOURCE_HOMEKIT) != ESP_OK) {
+            for (i = 0; i < count; i++) {
+                *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
+            }
+            ESP_LOGE(TAG, "Failed to apply HomeKit light state for %s", device->id);
+            return HAP_FAIL;
+        }
+    } else if (command_router_apply_on(device->id, next_state.on, APP_STATE_SOURCE_HOMEKIT) != ESP_OK) {
+        for (i = 0; i < count; i++) {
+            *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
+        }
+        ESP_LOGE(TAG, "Failed to apply HomeKit command for %s", device->id);
+        return HAP_FAIL;
+    }
+
+    for (i = 0; i < count; i++) {
+        hap_char_update_val(write_data[i].hc, &(write_data[i].val));
+    }
+    ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f",
+             device->id,
+             next_state.on,
+             next_state.brightness,
+             (double) next_state.hue,
+             (double) next_state.saturation);
+
+    return HAP_SUCCESS;
 }
 
 static hap_serv_t *hk_create_output_service(const app_device_config_t *device, bool initial_on)
@@ -160,7 +234,7 @@ static const char *hk_output_model(const app_device_config_t *device)
 {
     switch (device->kind) {
         case APP_DEVICE_KIND_LIGHT:
-            return "GPIO Light";
+            return device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL ? "NeoPixel RGB Light" : "GPIO Light";
         case APP_DEVICE_KIND_OUTLET:
             return "GPIO Outlet";
         case APP_DEVICE_KIND_SWITCH:
@@ -205,6 +279,9 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
 
     if (state_store_get(device->id, &state) != ESP_OK) {
         state.on = device->boot_on;
+        state.brightness = 100;
+        state.hue = 0.0f;
+        state.saturation = 0.0f;
     }
 
     binding->service = hk_create_output_service(device, state.on);
@@ -215,10 +292,31 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
     hap_serv_add_char(binding->service, hap_char_name_create((char *) device->name));
     hap_serv_set_priv(binding->service, (void *) device);
     hap_serv_set_write_cb(binding->service, hk_output_write);
+
     binding->on_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_ON);
     if (!binding->on_char) {
         return ESP_ERR_NOT_FOUND;
     }
+
+    if (device->supports_brightness) {
+        if (hap_serv_add_char(binding->service, hap_char_brightness_create(state.brightness)) != HAP_SUCCESS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (device->supports_hue) {
+        if (hap_serv_add_char(binding->service, hap_char_hue_create(state.hue)) != HAP_SUCCESS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (device->supports_saturation) {
+        if (hap_serv_add_char(binding->service, hap_char_saturation_create(state.saturation)) != HAP_SUCCESS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    binding->brightness_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_BRIGHTNESS);
+    binding->hue_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_HUE);
+    binding->saturation_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_SATURATION);
 
     hap_acc_add_serv(binding->accessory, binding->service);
     hap_add_bridged_accessory(binding->accessory, hap_get_unique_aid(device->id));

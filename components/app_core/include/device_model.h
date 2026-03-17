@@ -19,6 +19,11 @@ typedef enum {
 } app_device_kind_t;
 
 typedef enum {
+    APP_OUTPUT_DRIVER_GPIO_SWITCH = 0,
+    APP_OUTPUT_DRIVER_NEOPIXEL,
+} app_output_driver_t;
+
+typedef enum {
     APP_STATE_SOURCE_BOOT = 0,
     APP_STATE_SOURCE_HOMEKIT,
     APP_STATE_SOURCE_DEVICE,
@@ -27,6 +32,8 @@ typedef enum {
 typedef struct {
     bool on;
     int brightness;
+    float hue;
+    float saturation;
     int rotation_speed;
     float temperature_c;
     float humidity_percent;
@@ -37,7 +44,11 @@ typedef struct {
     const char *name;
     app_device_kind_t kind;
     gpio_num_t gpio;
+    app_output_driver_t output_driver;
     bool active_high;
     bool boot_on;
     bool supports_on;
+    bool supports_brightness;
+    bool supports_hue;
+    bool supports_saturation;
 } app_device_config_t;
