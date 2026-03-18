@@ -83,6 +83,7 @@ esp_err_t state_store_init(void)
             s_entries[i].state.brightness = 100;
             s_entries[i].state.hue = 0.0f;
             s_entries[i].state.saturation = 0.0f;
+            s_entries[i].state.rotation_speed = s_entries[i].device->boot_on ? 100 : 0;
         }
     }
 

@@ -44,7 +44,7 @@ Open `DoAn2 HomeKit Config` and confirm:
 - `Wi-Fi onboarding mode`: choose either hardcoded Wi-Fi or provisioning
 - `Primary switch GPIO`: set this to the NeoPixel data pin you wired
 - `Primary output hardware driver`: `NeoPixel / WS2812 RGB`
-- `Expose primary output as HomeKit Lightbulb`: enabled
+- `Primary output HomeKit service type`: `Lightbulb`
 - `Primary output boots ON`: optional
 
 `Primary switch is active high` does not matter for NeoPixel mode.

@@ -8,7 +8,7 @@
 typedef struct {
     const char *id;
     const char *name;
-    bool homekit_lightbulb;
+    uint8_t service_kind;
     gpio_num_t gpio;
     uint8_t output_driver;
     bool active_high;

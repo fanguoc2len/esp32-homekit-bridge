@@ -78,7 +78,7 @@ Open `DoAn2 HomeKit Config` and confirm:
 - `Provisioning transport`: `SoftAP provisioning`
 - `Primary switch GPIO`: `2` for the LED demo, unless your board uses another pin
 - `Primary switch is active high`: keep enabled unless your LED or relay is active-low
-- `Expose primary output as HomeKit Lightbulb`: enabled
+- `Primary output HomeKit service type`: `Lightbulb`
 - `Primary output boots ON`: disabled
 
 ## How pairing works

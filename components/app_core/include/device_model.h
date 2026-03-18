@@ -51,4 +51,5 @@ typedef struct {
     bool supports_brightness;
     bool supports_hue;
     bool supports_saturation;
+    bool supports_rotation_speed;
 } app_device_config_t;

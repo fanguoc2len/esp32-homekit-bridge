@@ -206,6 +206,47 @@ esp_err_t command_router_apply_light_state(const char *device_id,
     return command_router_apply_on(device->id, state->on, source);
 }
 
+esp_err_t command_router_apply_fan_state(const char *device_id,
+                                         const app_device_state_t *state,
+                                         app_state_source_t source)
+{
+    const app_device_config_t *device = device_registry_find(device_id);
+    app_device_state_t next_state;
+    drv_gpio_switch_config_t driver_config;
+    esp_err_t err;
+
+    if (!device || !state) {
+        return device ? ESP_ERR_INVALID_ARG : ESP_ERR_NOT_FOUND;
+    }
+    if (device->kind != APP_DEVICE_KIND_FAN || !device->supports_rotation_speed) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+    if (device->output_driver != APP_OUTPUT_DRIVER_GPIO_SWITCH) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    next_state = *state;
+    if (next_state.rotation_speed < 0) {
+        next_state.rotation_speed = 0;
+    } else if (next_state.rotation_speed > 100) {
+        next_state.rotation_speed = 100;
+    }
+
+    if (!next_state.on) {
+        next_state.rotation_speed = 0;
+    } else if (next_state.rotation_speed <= 0) {
+        next_state.rotation_speed = 100;
+    }
+    next_state.on = (next_state.rotation_speed > 0);
+
+    driver_config = make_switch_config(device);
+    err = drv_gpio_switch_set_on(&driver_config, next_state.on);
+    if (err != ESP_OK) {
+        return err;
+    }
+    return state_store_set_state(device->id, &next_state, source);
+}
+
 esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_source_t source)
 {
     const app_device_config_t *device = device_registry_find(device_id);
@@ -222,6 +263,7 @@ esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_sour
             state.brightness = 100;
             state.hue = 0.0f;
             state.saturation = 0.0f;
+            state.rotation_speed = 0;
         } else {
             state.on = on;
             if (on && state.brightness <= 0) {
@@ -229,6 +271,16 @@ esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_sour
             }
         }
         return command_router_apply_light_state(device->id, &state, source);
+    }
+
+    if (device->kind == APP_DEVICE_KIND_FAN && device->supports_rotation_speed) {
+        if (state_store_get(device->id, &state) != ESP_OK) {
+            state.rotation_speed = on ? 100 : 0;
+        } else {
+            state.rotation_speed = on ? (state.rotation_speed > 0 ? state.rotation_speed : 100) : 0;
+        }
+        state.on = on;
+        return command_router_apply_fan_state(device->id, &state, source);
     }
 
     switch (device->kind) {
@@ -266,8 +318,17 @@ esp_err_t command_router_sync_from_hardware(const char *device_id, app_state_sou
             state.brightness = 100;
             state.hue = 0.0f;
             state.saturation = 0.0f;
+            state.rotation_speed = 0;
         }
         return command_router_apply_light_state(device->id, &state, source);
+    }
+
+    if (device->kind == APP_DEVICE_KIND_FAN && device->supports_rotation_speed) {
+        if (state_store_get(device->id, &state) != ESP_OK) {
+            state.on = device->boot_on;
+            state.rotation_speed = state.on ? 100 : 0;
+        }
+        return command_router_apply_fan_state(device->id, &state, source);
     }
 
     switch (device->kind) {

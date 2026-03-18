@@ -14,13 +14,15 @@ esp_err_t device_registry_init(void)
     s_device_count = 0;
 
     if (profile->primary_switch.enabled && s_device_count < APP_MAX_DEVICES) {
-        bool supports_color = profile->primary_switch.homekit_lightbulb
+        app_device_kind_t kind = (app_device_kind_t) profile->primary_switch.service_kind;
+        bool supports_color = kind == APP_DEVICE_KIND_LIGHT
             && profile->primary_switch.output_driver == APP_OUTPUT_DRIVER_NEOPIXEL;
+        bool supports_rotation_speed = kind == APP_DEVICE_KIND_FAN;
 
         s_devices[s_device_count++] = (app_device_config_t) {
             .id = profile->primary_switch.id,
             .name = profile->primary_switch.name,
-            .kind = profile->primary_switch.homekit_lightbulb ? APP_DEVICE_KIND_LIGHT : APP_DEVICE_KIND_SWITCH,
+            .kind = kind,
             .gpio = profile->primary_switch.gpio,
             .output_driver = profile->primary_switch.output_driver,
             .active_high = profile->primary_switch.active_high,
@@ -29,6 +31,7 @@ esp_err_t device_registry_init(void)
             .supports_brightness = supports_color,
             .supports_hue = supports_color,
             .supports_saturation = supports_color,
+            .supports_rotation_speed = supports_rotation_speed,
         };
     }
 

@@ -2,12 +2,6 @@
 
 #include "board_profile.h"
 
-#ifdef CONFIG_SMARTHOME_OUTPUT_AS_LIGHTBULB
-#define SMARTHOME_CFG_OUTPUT_AS_LIGHTBULB true
-#else
-#define SMARTHOME_CFG_OUTPUT_AS_LIGHTBULB false
-#endif
-
 #ifdef CONFIG_SMARTHOME_SWITCH_ACTIVE_HIGH
 #define SMARTHOME_CFG_SWITCH_ACTIVE_HIGH true
 #else
@@ -26,6 +20,16 @@
 #define SMARTHOME_CFG_OUTPUT_DRIVER 0
 #endif
 
+#ifdef CONFIG_SMARTHOME_PRIMARY_OUTPUT_SERVICE_LIGHT
+#define SMARTHOME_CFG_SERVICE_KIND 1
+#elif defined(CONFIG_SMARTHOME_PRIMARY_OUTPUT_SERVICE_FAN)
+#define SMARTHOME_CFG_SERVICE_KIND 2
+#elif defined(CONFIG_SMARTHOME_PRIMARY_OUTPUT_SERVICE_OUTLET)
+#define SMARTHOME_CFG_SERVICE_KIND 4
+#else
+#define SMARTHOME_CFG_SERVICE_KIND 0
+#endif
+
 /*
  * The sample HomeKit switch path intentionally uses its own configurable GPIO.
  * This keeps the migration isolated from the existing Arduino sketch pins while
@@ -40,7 +44,7 @@ static const board_profile_t s_board_profile = {
     .primary_switch = {
         .id = CONFIG_SMARTHOME_SWITCH_ID,
         .name = CONFIG_SMARTHOME_SWITCH_NAME,
-        .homekit_lightbulb = SMARTHOME_CFG_OUTPUT_AS_LIGHTBULB,
+        .service_kind = SMARTHOME_CFG_SERVICE_KIND,
         .gpio = CONFIG_SMARTHOME_SWITCH_GPIO,
         .output_driver = SMARTHOME_CFG_OUTPUT_DRIVER,
         .active_high = SMARTHOME_CFG_SWITCH_ACTIVE_HIGH,

@@ -24,6 +24,7 @@ typedef struct {
     hap_char_t *brightness_char;
     hap_char_t *hue_char;
     hap_char_t *saturation_char;
+    hap_char_t *rotation_speed_char;
     char serial_number[32];
 } hk_output_binding_t;
 
@@ -112,12 +113,19 @@ static void hk_state_observer(const app_device_config_t *device,
         };
         hap_char_update_val(binding->saturation_char, &value);
     }
-    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f",
+    if (binding->rotation_speed_char) {
+        value = (hap_val_t) {
+            .f = state->rotation_speed,
+        };
+        hap_char_update_val(binding->rotation_speed_char, &value);
+    }
+    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d",
              device->id,
              state->on,
              state->brightness,
              (double) state->hue,
-             (double) state->saturation);
+             (double) state->saturation,
+             state->rotation_speed);
 }
 
 static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_priv, void *write_priv)
@@ -164,6 +172,10 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
         } else if (!strcmp(uuid, HAP_CHAR_UUID_SATURATION) && device->supports_saturation) {
             next_state.saturation = write->val.f;
             *(write->status) = HAP_STATUS_SUCCESS;
+        } else if (!strcmp(uuid, HAP_CHAR_UUID_ROTATION_SPEED) && device->supports_rotation_speed) {
+            next_state.rotation_speed = (int) write->val.f;
+            next_state.on = (next_state.rotation_speed > 0);
+            *(write->status) = HAP_STATUS_SUCCESS;
         } else {
             *(write->status) = HAP_STATUS_RES_ABSENT;
             ret = HAP_FAIL;
@@ -183,6 +195,14 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
             ESP_LOGE(TAG, "Failed to apply HomeKit light state for %s", device->id);
             return HAP_FAIL;
         }
+    } else if (device->kind == APP_DEVICE_KIND_FAN && device->supports_rotation_speed) {
+        if (command_router_apply_fan_state(device->id, &next_state, APP_STATE_SOURCE_HOMEKIT) != ESP_OK) {
+            for (i = 0; i < count; i++) {
+                *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
+            }
+            ESP_LOGE(TAG, "Failed to apply HomeKit fan state for %s", device->id);
+            return HAP_FAIL;
+        }
     } else if (command_router_apply_on(device->id, next_state.on, APP_STATE_SOURCE_HOMEKIT) != ESP_OK) {
         for (i = 0; i < count; i++) {
             *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
@@ -194,12 +214,13 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
     for (i = 0; i < count; i++) {
         hap_char_update_val(write_data[i].hc, &(write_data[i].val));
     }
-    ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f",
+    ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d",
              device->id,
              next_state.on,
              next_state.brightness,
              (double) next_state.hue,
-             (double) next_state.saturation);
+             (double) next_state.saturation,
+             next_state.rotation_speed);
 
     return HAP_SUCCESS;
 }
@@ -209,6 +230,8 @@ static hap_serv_t *hk_create_output_service(const app_device_config_t *device, b
     switch (device->kind) {
         case APP_DEVICE_KIND_LIGHT:
             return hap_serv_lightbulb_create(initial_on);
+        case APP_DEVICE_KIND_FAN:
+            return hap_serv_fan_create(initial_on);
         case APP_DEVICE_KIND_OUTLET:
             return hap_serv_outlet_create(initial_on, initial_on);
         case APP_DEVICE_KIND_SWITCH:
@@ -222,6 +245,8 @@ static hap_cid_t hk_output_category(const app_device_config_t *device)
     switch (device->kind) {
         case APP_DEVICE_KIND_LIGHT:
             return HAP_CID_LIGHTING;
+        case APP_DEVICE_KIND_FAN:
+            return HAP_CID_FAN;
         case APP_DEVICE_KIND_OUTLET:
             return HAP_CID_OUTLET;
         case APP_DEVICE_KIND_SWITCH:
@@ -235,6 +260,8 @@ static const char *hk_output_model(const app_device_config_t *device)
     switch (device->kind) {
         case APP_DEVICE_KIND_LIGHT:
             return device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL ? "NeoPixel RGB Light" : "GPIO Light";
+        case APP_DEVICE_KIND_FAN:
+            return "GPIO Fan";
         case APP_DEVICE_KIND_OUTLET:
             return "GPIO Outlet";
         case APP_DEVICE_KIND_SWITCH:
@@ -282,6 +309,7 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
         state.brightness = 100;
         state.hue = 0.0f;
         state.saturation = 0.0f;
+        state.rotation_speed = state.on ? 100 : 0;
     }
 
     binding->service = hk_create_output_service(device, state.on);
@@ -313,10 +341,17 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
             return ESP_ERR_NO_MEM;
         }
     }
+    if (device->supports_rotation_speed) {
+        if (hap_serv_add_char(binding->service,
+                              hap_char_rotation_speed_create((float) state.rotation_speed)) != HAP_SUCCESS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
 
     binding->brightness_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_BRIGHTNESS);
     binding->hue_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_HUE);
     binding->saturation_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_SATURATION);
+    binding->rotation_speed_char = hap_serv_get_char_by_uuid(binding->service, HAP_CHAR_UUID_ROTATION_SPEED);
 
     hap_acc_add_serv(binding->accessory, binding->service);
     hap_add_bridged_accessory(binding->accessory, hap_get_unique_aid(device->id));

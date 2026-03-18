@@ -25,6 +25,7 @@ without being mixed into the original Flask, Firebase, and Arduino workflow.
 - Pairing and onboarding docs in `PAIRING.md`
 - LED quickstart in `LED_DEMO.md`
 - NeoPixel RGB quickstart in `NEOPIXEL_DEMO.md`
+- Fan quickstart in `FAN_DEMO.md`
 - Migration plan in `ROADMAP.md`
 
 ## Build prerequisites
@@ -47,18 +48,26 @@ export ESP_HOMEKIT_SDK_PATH=/path/to/esp-homekit-sdk
 ./idf.sh -p /dev/ttyUSB0 flash monitor
 ```
 
+By default `idf.sh` uses the LED demo preset. Override `SDKCONFIG_DEFAULTS` before
+running it when you want the NeoPixel or fan presets.
+
 See `PAIRING.md` for first-boot onboarding, Home app pairing, and recovery/reset flow.
 See `LED_DEMO.md` for the quickest Apple Home demo using a single ESP32 LED.
 See `NEOPIXEL_DEMO.md` for the RGB light path using HomeKit `Brightness`, `Hue`, and `Saturation`.
+See `FAN_DEMO.md` for the current HomeKit `Fan` and `RotationSpeed` path.
 See `ROADMAP.md` for the migration sequence from the original DoAn2 system.
 See `MIGRATION_MAP.md` for the device-by-device mapping from DoAn2 features to HomeKit services.
 
 ## Notes
 
 - `main/Kconfig.projbuild` exposes Wi-Fi credentials, HomeKit setup code, and the sample switch GPIO.
+- The primary output can be exposed as a `Switch`, `Lightbulb`, `Fan`, or `Outlet`.
 - The primary output can be driven as either a plain GPIO switch or a NeoPixel / WS2812 RGB light.
 - When the NeoPixel driver is selected, the bridged HomeKit accessory exposes `On`, `Brightness`,
   `Hue`, and `Saturation`.
+- The current fan path already exposes `RotationSpeed` in Apple Home. Right now the default GPIO
+  hardware driver maps any speed above zero to an active output line, which is a good migration
+  scaffold even before a dedicated PWM fan driver lands.
 - The sample GPIO switch is intentionally isolated from the current Arduino pins so the migration can
   be tested without breaking the existing runtime.
 - `SMARTHOME_LOCAL_STATE_SELF_TEST` is an optional hardware test helper. When enabled, firmware
@@ -68,4 +77,5 @@ See `MIGRATION_MAP.md` for the device-by-device mapping from DoAn2 features to H
 - If you previously paired the old on/off-only light, remove it from Apple Home and re-pair after
   flashing the RGB NeoPixel firmware because the HomeKit accessory database changes when color
   characteristics are added.
-- The next migration target should reuse the same app core for fan, relay appliances, and sensors.
+- The next migration targets should reuse the same app core for door/lock, relay appliances,
+  and sensors.

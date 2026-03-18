@@ -113,12 +113,24 @@ config SMARTHOME_SWITCH_ACTIVE_HIGH
     bool "Primary switch is active high"
     default y
 
-config SMARTHOME_OUTPUT_AS_LIGHTBULB
-    bool "Expose primary output as HomeKit Lightbulb"
-    default y
+choice SMARTHOME_PRIMARY_OUTPUT_SERVICE
+    bool "Primary output HomeKit service type"
+    default SMARTHOME_PRIMARY_OUTPUT_SERVICE_LIGHT
     help
-        Enable this when the relay/output is mainly used as a light load.
-        Disable it to expose the same GPIO path as a generic HomeKit switch.
+        Select how the primary hardware output is represented in Apple Home.
+
+    config SMARTHOME_PRIMARY_OUTPUT_SERVICE_SWITCH
+        bool "Switch"
+
+    config SMARTHOME_PRIMARY_OUTPUT_SERVICE_LIGHT
+        bool "Lightbulb"
+
+    config SMARTHOME_PRIMARY_OUTPUT_SERVICE_FAN
+        bool "Fan"
+
+    config SMARTHOME_PRIMARY_OUTPUT_SERVICE_OUTLET
+        bool "Outlet"
+endchoice
 
 config SMARTHOME_OUTPUT_BOOT_ON
     bool "Primary output boots ON"
