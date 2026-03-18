@@ -32,6 +32,7 @@ static bool state_store_state_equal(const app_device_state_t *lhs, const app_dev
         && lhs->hue == rhs->hue
         && lhs->saturation == rhs->saturation
         && lhs->rotation_speed == rhs->rotation_speed
+        && lhs->effect_rainbow == rhs->effect_rainbow
         && lhs->temperature_c == rhs->temperature_c
         && lhs->humidity_percent == rhs->humidity_percent;
 }
@@ -84,6 +85,7 @@ esp_err_t state_store_init(void)
             s_entries[i].state.hue = 0.0f;
             s_entries[i].state.saturation = 0.0f;
             s_entries[i].state.rotation_speed = s_entries[i].device->boot_on ? 100 : 0;
+            s_entries[i].state.effect_rainbow = false;
         }
     }
 

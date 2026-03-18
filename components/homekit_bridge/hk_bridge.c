@@ -119,13 +119,14 @@ static void hk_state_observer(const app_device_config_t *device,
         };
         hap_char_update_val(binding->rotation_speed_char, &value);
     }
-    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d",
+    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d rainbow=%d",
              device->id,
              state->on,
              state->brightness,
              (double) state->hue,
              (double) state->saturation,
-             state->rotation_speed);
+             state->rotation_speed,
+             state->effect_rainbow);
 }
 
 static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_priv, void *write_priv)
@@ -148,6 +149,7 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
         next_state.brightness = 100;
         next_state.hue = 0.0f;
         next_state.saturation = 0.0f;
+        next_state.effect_rainbow = false;
     }
 
     for (i = 0; i < count; i++) {
@@ -214,13 +216,14 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
     for (i = 0; i < count; i++) {
         hap_char_update_val(write_data[i].hc, &(write_data[i].val));
     }
-    ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d",
+    ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d rainbow=%d",
              device->id,
              next_state.on,
              next_state.brightness,
              (double) next_state.hue,
              (double) next_state.saturation,
-             next_state.rotation_speed);
+             next_state.rotation_speed,
+             next_state.effect_rainbow);
 
     return HAP_SUCCESS;
 }
@@ -257,6 +260,10 @@ static hap_cid_t hk_output_category(const app_device_config_t *device)
 
 static const char *hk_output_model(const app_device_config_t *device)
 {
+    if (device->is_effect_switch) {
+        return "NeoPixel Effect Switch";
+    }
+
     switch (device->kind) {
         case APP_DEVICE_KIND_LIGHT:
             return device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL ? "NeoPixel RGB Light" : "GPIO Light";
@@ -310,6 +317,7 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
         state.hue = 0.0f;
         state.saturation = 0.0f;
         state.rotation_speed = state.on ? 100 : 0;
+        state.effect_rainbow = false;
     }
 
     binding->service = hk_create_output_service(device, state.on);

@@ -10,6 +10,7 @@ to Apple Home as a real RGB `Lightbulb`.
 - Lets Apple Home change `Brightness`
 - Lets Apple Home change `Hue`
 - Lets Apple Home change `Saturation`
+- Exposes a separate HomeKit switch to toggle rainbow effect
 
 ## Hardware
 
@@ -76,5 +77,8 @@ Inside Apple Home, the accessory should now support:
 - tap on/off
 - brightness slider
 - color picker
+- a separate `Rainbow` switch accessory for the effect
+When those controls change in Apple Home, the NeoPixel should follow:
 
-When those controls change in Apple Home, the NeoPixel color should follow.
+- light tile: static color and brightness
+- rainbow switch: animated effect on/off

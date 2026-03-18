@@ -35,6 +35,7 @@ typedef struct {
     float hue;
     float saturation;
     int rotation_speed;
+    bool effect_rainbow;
     float temperature_c;
     float humidity_percent;
 } app_device_state_t;
@@ -52,4 +53,7 @@ typedef struct {
     bool supports_hue;
     bool supports_saturation;
     bool supports_rotation_speed;
+    bool supports_effect_rainbow;
+    bool is_effect_switch;
+    const char *linked_device_id;
 } app_device_config_t;

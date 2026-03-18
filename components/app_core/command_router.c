@@ -1,5 +1,10 @@
+#include <string.h>
+
 #include <math.h>
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <esp_check.h>
 #include <esp_log.h>
 
 #include "command_router.h"
@@ -9,6 +14,16 @@
 #include "state_store.h"
 
 static const char *TAG = "command_router";
+static const uint16_t EFFECT_HUE_STEP = 4;
+static const uint32_t EFFECT_INTERVAL_MS = 40;
+
+typedef struct {
+    bool used;
+    const app_device_config_t *device;
+    uint16_t hue_offset;
+} neopixel_effect_slot_t;
+
+static neopixel_effect_slot_t s_effect_slots[APP_MAX_DEVICES];
 
 static drv_gpio_switch_config_t make_switch_config(const app_device_config_t *device)
 {
@@ -29,6 +44,87 @@ static drv_neopixel_config_t make_neopixel_config(const app_device_config_t *dev
         .boot_on = device->boot_on,
     };
     return config;
+}
+
+static neopixel_effect_slot_t *command_router_find_effect_slot(const char *device_id)
+{
+    size_t i;
+
+    if (!device_id) {
+        return NULL;
+    }
+
+    for (i = 0; i < APP_MAX_DEVICES; i++) {
+        if (s_effect_slots[i].used && !strcmp(s_effect_slots[i].device->id, device_id)) {
+            return &s_effect_slots[i];
+        }
+    }
+    return NULL;
+}
+
+static neopixel_effect_slot_t *command_router_claim_effect_slot(const app_device_config_t *device)
+{
+    size_t i;
+
+    if (!device) {
+        return NULL;
+    }
+
+    for (i = 0; i < APP_MAX_DEVICES; i++) {
+        if (s_effect_slots[i].used && s_effect_slots[i].device == device) {
+            return &s_effect_slots[i];
+        }
+    }
+
+    for (i = 0; i < APP_MAX_DEVICES; i++) {
+        if (!s_effect_slots[i].used) {
+            s_effect_slots[i].used = true;
+            s_effect_slots[i].device = device;
+            s_effect_slots[i].hue_offset = 0;
+            return &s_effect_slots[i];
+        }
+    }
+    return NULL;
+}
+
+static const app_device_config_t *command_router_find_effect_switch_for_light(const char *light_device_id)
+{
+    size_t i;
+
+    if (!light_device_id) {
+        return NULL;
+    }
+
+    for (i = 0; i < device_registry_count(); i++) {
+        const app_device_config_t *candidate = device_registry_get(i);
+
+        if (candidate && candidate->is_effect_switch && candidate->linked_device_id
+            && !strcmp(candidate->linked_device_id, light_device_id)) {
+            return candidate;
+        }
+    }
+
+    return NULL;
+}
+
+static esp_err_t command_router_sync_effect_switch_state(const app_device_config_t *light_device,
+                                                         bool effect_on,
+                                                         app_state_source_t source)
+{
+    const app_device_config_t *effect_device;
+    app_device_state_t effect_state = {0};
+
+    if (!light_device || !light_device->supports_effect_rainbow) {
+        return ESP_OK;
+    }
+
+    effect_device = command_router_find_effect_switch_for_light(light_device->id);
+    if (!effect_device) {
+        return ESP_OK;
+    }
+
+    effect_state.on = effect_on;
+    return state_store_set_state(effect_device->id, &effect_state, source);
 }
 
 static uint8_t command_router_rgb_channel(float value)
@@ -116,15 +212,128 @@ static void command_router_hsv_to_rgb(const app_device_state_t *state,
     *blue_out = command_router_rgb_channel((blue + match) * 255.0f);
 }
 
+static esp_err_t command_router_render_neopixel_state(const app_device_config_t *device,
+                                                      const app_device_state_t *state,
+                                                      uint16_t hue_offset)
+{
+    drv_neopixel_config_t driver_config;
+    app_device_state_t render_state;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+
+    if (!device || !state) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    driver_config = make_neopixel_config(device);
+    if (!state->on || state->brightness <= 0) {
+        return drv_neopixel_clear(&driver_config);
+    }
+
+    render_state = *state;
+    if (render_state.effect_rainbow) {
+        render_state.hue = fmodf(render_state.hue + hue_offset, 360.0f);
+        if (render_state.hue < 0.0f) {
+            render_state.hue += 360.0f;
+        }
+        if (render_state.saturation < 1.0f) {
+            render_state.saturation = 100.0f;
+        }
+    }
+
+    command_router_hsv_to_rgb(&render_state, &red, &green, &blue);
+    return drv_neopixel_set_rgb(&driver_config, red, green, blue);
+}
+
+static void command_router_neopixel_effect_task(void *arg)
+{
+    (void) arg;
+
+    while (true) {
+        size_t i;
+
+        for (i = 0; i < APP_MAX_DEVICES; i++) {
+            neopixel_effect_slot_t *slot = &s_effect_slots[i];
+            app_device_state_t state = {0};
+
+            if (!slot->used || !slot->device) {
+                continue;
+            }
+            if (state_store_get(slot->device->id, &state) != ESP_OK) {
+                continue;
+            }
+            if (!state.on || !state.effect_rainbow) {
+                continue;
+            }
+            if (command_router_render_neopixel_state(slot->device, &state, slot->hue_offset) == ESP_OK) {
+                slot->hue_offset = (uint16_t) ((slot->hue_offset + EFFECT_HUE_STEP) % 360);
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(EFFECT_INTERVAL_MS));
+    }
+}
+
+static esp_err_t command_router_apply_effect_switch(const char *device_id,
+                                                    bool on,
+                                                    app_state_source_t source)
+{
+    const app_device_config_t *effect_device = device_registry_find(device_id);
+    const app_device_config_t *light_device;
+    app_device_state_t light_state = {0};
+    app_device_state_t effect_state = {0};
+
+    if (!effect_device || !effect_device->is_effect_switch || !effect_device->linked_device_id) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    light_device = device_registry_find(effect_device->linked_device_id);
+    if (!light_device) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    if (state_store_get(light_device->id, &light_state) != ESP_OK) {
+        light_state.on = light_device->boot_on;
+        light_state.brightness = 100;
+        light_state.hue = 0.0f;
+        light_state.saturation = 0.0f;
+        light_state.rotation_speed = 0;
+        light_state.effect_rainbow = false;
+    }
+
+    effect_state.on = on;
+    light_state.effect_rainbow = on;
+    if (on) {
+        light_state.on = true;
+        if (light_state.brightness <= 0) {
+            light_state.brightness = 100;
+        }
+    }
+
+    ESP_RETURN_ON_ERROR(state_store_set_state(effect_device->id, &effect_state, source),
+                        TAG, "Failed to update effect switch state");
+    return command_router_apply_light_state(light_device->id, &light_state, APP_STATE_SOURCE_DEVICE);
+}
+
 esp_err_t command_router_init(void)
 {
     size_t i;
 
+    memset(s_effect_slots, 0, sizeof(s_effect_slots));
     for (i = 0; i < device_registry_count(); i++) {
         const app_device_config_t *device = device_registry_get(i);
         esp_err_t err;
 
         if (!device) {
+            continue;
+        }
+
+        if (device->is_effect_switch) {
+            err = command_router_sync_from_hardware(device->id, APP_STATE_SOURCE_BOOT);
+            if (err != ESP_OK) {
+                return err;
+            }
             continue;
         }
 
@@ -140,6 +349,9 @@ esp_err_t command_router_init(void)
                     if (err != ESP_OK) {
                         ESP_LOGE(TAG, "Failed to init NeoPixel driver for %s", device->id);
                         return err;
+                    }
+                    if (device->supports_effect_rainbow && !command_router_claim_effect_slot(device)) {
+                        return ESP_ERR_NO_MEM;
                     }
                 } else {
                     drv_gpio_switch_config_t driver_config = make_switch_config(device);
@@ -159,6 +371,20 @@ esp_err_t command_router_init(void)
             default:
                 ESP_LOGW(TAG, "Device kind %d not wired yet for %s", device->kind, device->id);
                 break;
+        }
+    }
+
+    for (i = 0; i < APP_MAX_DEVICES; i++) {
+        if (s_effect_slots[i].used) {
+            if (xTaskCreate(command_router_neopixel_effect_task,
+                            "neopixel_effect",
+                            4096,
+                            NULL,
+                            4,
+                            NULL) != pdPASS) {
+                return ESP_ERR_NO_MEM;
+            }
+            break;
         }
     }
 
@@ -185,22 +411,42 @@ esp_err_t command_router_apply_light_state(const char *device_id,
     }
 
     if (device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL) {
-        drv_neopixel_config_t driver_config = make_neopixel_config(device);
-        uint8_t red;
-        uint8_t green;
-        uint8_t blue;
         esp_err_t err;
+        app_device_state_t next_state = *state;
 
-        command_router_hsv_to_rgb(state, &red, &green, &blue);
-        if (!state->on || state->brightness <= 0) {
-            err = drv_neopixel_clear(&driver_config);
-        } else {
-            err = drv_neopixel_set_rgb(&driver_config, red, green, blue);
+        if (!next_state.on) {
+            next_state.effect_rainbow = false;
         }
+
+        if (next_state.effect_rainbow && next_state.on) {
+            neopixel_effect_slot_t *slot = command_router_find_effect_slot(device->id);
+
+            err = state_store_set_state(device->id, &next_state, source);
+            if (err != ESP_OK) {
+                return err;
+            }
+            err = command_router_sync_effect_switch_state(device,
+                                                          true,
+                                                          APP_STATE_SOURCE_DEVICE);
+            if (err != ESP_OK) {
+                return err;
+            }
+            return command_router_render_neopixel_state(device,
+                                                        &next_state,
+                                                        slot ? slot->hue_offset : 0);
+        }
+
+        err = command_router_render_neopixel_state(device, &next_state, 0);
         if (err != ESP_OK) {
             return err;
         }
-        return state_store_set_state(device->id, state, source);
+        err = state_store_set_state(device->id, &next_state, source);
+        if (err != ESP_OK) {
+            return err;
+        }
+        return command_router_sync_effect_switch_state(device,
+                                                       false,
+                                                       APP_STATE_SOURCE_DEVICE);
     }
 
     return command_router_apply_on(device->id, state->on, source);
@@ -257,6 +503,10 @@ esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_sour
         return ESP_ERR_NOT_FOUND;
     }
 
+    if (device->is_effect_switch) {
+        return command_router_apply_effect_switch(device_id, on, source);
+    }
+
     if (device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL) {
         if (state_store_get(device->id, &state) != ESP_OK) {
             state.on = on;
@@ -264,10 +514,14 @@ esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_sour
             state.hue = 0.0f;
             state.saturation = 0.0f;
             state.rotation_speed = 0;
+            state.effect_rainbow = false;
         } else {
             state.on = on;
             if (on && state.brightness <= 0) {
                 state.brightness = 100;
+            }
+            if (!on) {
+                state.effect_rainbow = false;
             }
         }
         return command_router_apply_light_state(device->id, &state, source);
@@ -312,6 +566,19 @@ esp_err_t command_router_sync_from_hardware(const char *device_id, app_state_sou
         return ESP_ERR_NOT_FOUND;
     }
 
+    if (device->is_effect_switch) {
+        app_device_state_t linked_state = {0};
+        app_device_state_t effect_state = {0};
+        const app_device_config_t *light_device = device->linked_device_id
+            ? device_registry_find(device->linked_device_id)
+            : NULL;
+
+        if (light_device && state_store_get(light_device->id, &linked_state) == ESP_OK) {
+            effect_state.on = linked_state.effect_rainbow;
+        }
+        return state_store_set_state(device->id, &effect_state, source);
+    }
+
     if (device->output_driver == APP_OUTPUT_DRIVER_NEOPIXEL) {
         if (state_store_get(device->id, &state) != ESP_OK) {
             state.on = device->boot_on;
@@ -319,6 +586,7 @@ esp_err_t command_router_sync_from_hardware(const char *device_id, app_state_sou
             state.hue = 0.0f;
             state.saturation = 0.0f;
             state.rotation_speed = 0;
+            state.effect_rainbow = false;
         }
         return command_router_apply_light_state(device->id, &state, source);
     }
