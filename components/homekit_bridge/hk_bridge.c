@@ -20,12 +20,19 @@ typedef struct {
     const app_device_config_t *device;
     hap_acc_t *accessory;
     hap_serv_t *service;
+    hap_serv_t *humidity_service;
     hap_char_t *on_char;
     hap_char_t *brightness_char;
     hap_char_t *hue_char;
     hap_char_t *saturation_char;
     hap_char_t *rotation_speed_char;
+    hap_char_t *lock_current_state_char;
+    hap_char_t *lock_target_state_char;
+    hap_char_t *temperature_char;
+    hap_char_t *humidity_char;
     char serial_number[32];
+    char temperature_service_name[64];
+    char humidity_service_name[64];
 } hk_output_binding_t;
 
 static const char *TAG = "hk_bridge";
@@ -74,27 +81,20 @@ static hk_output_binding_t *hk_find_output_binding(const char *device_id)
     return NULL;
 }
 
-static void hk_state_observer(const app_device_config_t *device,
-                              const app_device_state_t *state,
-                              app_state_source_t source,
-                              void *ctx)
+static void hk_update_binding_from_state(hk_output_binding_t *binding, const app_device_state_t *state)
 {
-    hk_output_binding_t *binding;
     hap_val_t value = {0};
 
-    (void) ctx;
-
-    if (!device || source == APP_STATE_SOURCE_HOMEKIT) {
+    if (!binding || !state) {
         return;
     }
 
-    binding = hk_find_output_binding(device->id);
-    if (!binding || !binding->on_char) {
-        return;
+    if (binding->on_char) {
+        value = (hap_val_t) {
+            .b = state->on,
+        };
+        hap_char_update_val(binding->on_char, &value);
     }
-
-    value.b = state->on;
-    hap_char_update_val(binding->on_char, &value);
     if (binding->brightness_char) {
         value = (hap_val_t) {
             .i = state->brightness,
@@ -119,14 +119,64 @@ static void hk_state_observer(const app_device_config_t *device,
         };
         hap_char_update_val(binding->rotation_speed_char, &value);
     }
-    ESP_LOGI(TAG, "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d rainbow=%d",
+    if (binding->lock_current_state_char) {
+        value = (hap_val_t) {
+            .u = state->lock_current_state,
+        };
+        hap_char_update_val(binding->lock_current_state_char, &value);
+    }
+    if (binding->lock_target_state_char) {
+        value = (hap_val_t) {
+            .u = state->lock_target_state,
+        };
+        hap_char_update_val(binding->lock_target_state_char, &value);
+    }
+    if (binding->temperature_char) {
+        value = (hap_val_t) {
+            .f = state->temperature_c,
+        };
+        hap_char_update_val(binding->temperature_char, &value);
+    }
+    if (binding->humidity_char) {
+        value = (hap_val_t) {
+            .f = state->humidity_percent,
+        };
+        hap_char_update_val(binding->humidity_char, &value);
+    }
+}
+
+static void hk_state_observer(const app_device_config_t *device,
+                              const app_device_state_t *state,
+                              app_state_source_t source,
+                              void *ctx)
+{
+    hk_output_binding_t *binding;
+
+    (void) ctx;
+
+    if (!device || source == APP_STATE_SOURCE_HOMEKIT) {
+        return;
+    }
+
+    binding = hk_find_output_binding(device->id);
+    if (!binding) {
+        return;
+    }
+
+    hk_update_binding_from_state(binding, state);
+    ESP_LOGI(TAG,
+             "Synced local state to HomeKit: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d rainbow=%d lock=%u/%u temp=%.1f humidity=%.1f",
              device->id,
              state->on,
              state->brightness,
              (double) state->hue,
              (double) state->saturation,
              state->rotation_speed,
-             state->effect_rainbow);
+             state->effect_rainbow,
+             (unsigned int) state->lock_current_state,
+             (unsigned int) state->lock_target_state,
+             (double) state->temperature_c,
+             (double) state->humidity_percent);
 }
 
 static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_priv, void *write_priv)
@@ -213,8 +263,12 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
         return HAP_FAIL;
     }
 
-    for (i = 0; i < count; i++) {
-        hap_char_update_val(write_data[i].hc, &(write_data[i].val));
+    if (state_store_get(device->id, &next_state) == ESP_OK) {
+        hk_update_binding_from_state(hk_find_output_binding(device->id), &next_state);
+    } else {
+        for (i = 0; i < count; i++) {
+            hap_char_update_val(write_data[i].hc, &(write_data[i].val));
+        }
     }
     ESP_LOGI(TAG, "HomeKit state applied: %s -> on=%d brightness=%d hue=%.1f saturation=%.1f speed=%d rainbow=%d",
              device->id,
@@ -224,6 +278,66 @@ static int hk_output_write(hap_write_data_t write_data[], int count, void *serv_
              (double) next_state.saturation,
              next_state.rotation_speed,
              next_state.effect_rainbow);
+
+    return HAP_SUCCESS;
+}
+
+static int hk_lock_write(hap_write_data_t write_data[], int count, void *serv_priv, void *write_priv)
+{
+    const app_device_config_t *device = serv_priv;
+    app_device_state_t next_state = {0};
+    int i;
+    int ret = HAP_SUCCESS;
+
+    if (hap_req_get_ctrl_id(write_priv)) {
+        ESP_LOGI(TAG, "Received HomeKit lock write from %s", hap_req_get_ctrl_id(write_priv));
+    }
+
+    if (!device) {
+        return HAP_FAIL;
+    }
+
+    if (state_store_get(device->id, &next_state) != ESP_OK) {
+        next_state.lock_target_state = device->initial_lock_target_state;
+        next_state.lock_current_state = next_state.lock_target_state == APP_LOCK_TARGET_SECURED
+            ? APP_LOCK_CURRENT_SECURED
+            : APP_LOCK_CURRENT_UNSECURED;
+    }
+
+    for (i = 0; i < count; i++) {
+        hap_write_data_t *write = &write_data[i];
+        const char *uuid = hap_char_get_type_uuid(write->hc);
+
+        *(write->status) = HAP_STATUS_VAL_INVALID;
+
+        if (!strcmp(uuid, HAP_CHAR_UUID_LOCK_TARGET_STATE) && device->supports_lock) {
+            next_state.lock_target_state = (uint8_t) write->val.u;
+            *(write->status) = HAP_STATUS_SUCCESS;
+        } else {
+            *(write->status) = HAP_STATUS_RES_ABSENT;
+            ret = HAP_FAIL;
+        }
+    }
+
+    if (ret != HAP_SUCCESS) {
+        return ret;
+    }
+
+    if (command_router_apply_lock_state(device->id, &next_state, APP_STATE_SOURCE_HOMEKIT) != ESP_OK) {
+        for (i = 0; i < count; i++) {
+            *(write_data[i].status) = HAP_STATUS_RES_ABSENT;
+        }
+        ESP_LOGE(TAG, "Failed to apply HomeKit lock state for %s", device->id);
+        return HAP_FAIL;
+    }
+
+    if (state_store_get(device->id, &next_state) == ESP_OK) {
+        hk_update_binding_from_state(hk_find_output_binding(device->id), &next_state);
+    }
+    ESP_LOGI(TAG, "HomeKit lock applied: %s -> current=%u target=%u",
+             device->id,
+             (unsigned int) next_state.lock_current_state,
+             (unsigned int) next_state.lock_target_state);
 
     return HAP_SUCCESS;
 }
@@ -368,6 +482,156 @@ static esp_err_t hk_add_output_accessory(const board_profile_t *profile, const a
     return ESP_OK;
 }
 
+static esp_err_t hk_add_lock_accessory(const board_profile_t *profile, const app_device_config_t *device)
+{
+    hk_output_binding_t *binding;
+    hap_acc_cfg_t accessory_cfg;
+    app_device_state_t state = {0};
+
+    if (s_output_binding_count >= APP_MAX_DEVICES) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    binding = &s_output_bindings[s_output_binding_count];
+    memset(binding, 0, sizeof(*binding));
+    binding->device = device;
+
+    snprintf(binding->serial_number, sizeof(binding->serial_number), "%s-%u",
+             profile->serial_number, (unsigned int) (s_output_binding_count + 1));
+
+    accessory_cfg = (hap_acc_cfg_t) {
+        .name = (char *) device->name,
+        .manufacturer = (char *) profile->manufacturer,
+        .model = "Virtual Door Lock",
+        .serial_num = binding->serial_number,
+        .fw_rev = (char *) profile->fw_revision,
+        .hw_rev = NULL,
+        .pv = "1.1.0",
+        .identify_routine = hk_accessory_identify,
+        .cid = HAP_CID_LOCK,
+    };
+
+    binding->accessory = hap_acc_create(&accessory_cfg);
+    if (!binding->accessory) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (state_store_get(device->id, &state) != ESP_OK) {
+        state.lock_target_state = device->initial_lock_target_state;
+        state.lock_current_state = state.lock_target_state == APP_LOCK_TARGET_SECURED
+            ? APP_LOCK_CURRENT_SECURED
+            : APP_LOCK_CURRENT_UNSECURED;
+    }
+
+    binding->service = hap_serv_lock_mechanism_create(state.lock_current_state, state.lock_target_state);
+    if (!binding->service) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    hap_serv_add_char(binding->service, hap_char_name_create((char *) device->name));
+    hap_serv_set_priv(binding->service, (void *) device);
+    hap_serv_set_write_cb(binding->service, hk_lock_write);
+
+    binding->lock_current_state_char = hap_serv_get_char_by_uuid(binding->service,
+                                                                 HAP_CHAR_UUID_LOCK_CURRENT_STATE);
+    binding->lock_target_state_char = hap_serv_get_char_by_uuid(binding->service,
+                                                                HAP_CHAR_UUID_LOCK_TARGET_STATE);
+    if (!binding->lock_current_state_char || !binding->lock_target_state_char) {
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    hap_acc_add_serv(binding->accessory, binding->service);
+    hap_add_bridged_accessory(binding->accessory, hap_get_unique_aid(device->id));
+
+    s_output_binding_count++;
+    return ESP_OK;
+}
+
+static esp_err_t hk_add_sensor_accessory(const board_profile_t *profile, const app_device_config_t *device)
+{
+    hk_output_binding_t *binding;
+    hap_acc_cfg_t accessory_cfg;
+    app_device_state_t state = {0};
+
+    if (s_output_binding_count >= APP_MAX_DEVICES) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    binding = &s_output_bindings[s_output_binding_count];
+    memset(binding, 0, sizeof(*binding));
+    binding->device = device;
+
+    snprintf(binding->serial_number, sizeof(binding->serial_number), "%s-%u",
+             profile->serial_number, (unsigned int) (s_output_binding_count + 1));
+
+    accessory_cfg = (hap_acc_cfg_t) {
+        .name = (char *) device->name,
+        .manufacturer = (char *) profile->manufacturer,
+        .model = "Virtual Climate Sensor",
+        .serial_num = binding->serial_number,
+        .fw_rev = (char *) profile->fw_revision,
+        .hw_rev = NULL,
+        .pv = "1.1.0",
+        .identify_routine = hk_accessory_identify,
+        .cid = HAP_CID_SENSOR,
+    };
+
+    binding->accessory = hap_acc_create(&accessory_cfg);
+    if (!binding->accessory) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (state_store_get(device->id, &state) != ESP_OK) {
+        state.temperature_c = device->initial_temperature_c;
+        state.humidity_percent = device->initial_humidity_percent;
+    }
+
+    if (device->supports_temperature) {
+        snprintf(binding->temperature_service_name,
+                 sizeof(binding->temperature_service_name),
+                 "%s Temperature",
+                 device->name);
+        binding->service = hap_serv_temperature_sensor_create(state.temperature_c);
+        if (!binding->service) {
+            return ESP_ERR_NO_MEM;
+        }
+        hap_serv_add_char(binding->service, hap_char_name_create(binding->temperature_service_name));
+        binding->temperature_char = hap_serv_get_char_by_uuid(binding->service,
+                                                              HAP_CHAR_UUID_CURRENT_TEMPERATURE);
+        if (!binding->temperature_char) {
+            return ESP_ERR_NOT_FOUND;
+        }
+        hap_acc_add_serv(binding->accessory, binding->service);
+    }
+
+    if (device->supports_humidity) {
+        snprintf(binding->humidity_service_name,
+                 sizeof(binding->humidity_service_name),
+                 "%s Humidity",
+                 device->name);
+        binding->humidity_service = hap_serv_humidity_sensor_create(state.humidity_percent);
+        if (!binding->humidity_service) {
+            return ESP_ERR_NO_MEM;
+        }
+        hap_serv_add_char(binding->humidity_service, hap_char_name_create(binding->humidity_service_name));
+        binding->humidity_char = hap_serv_get_char_by_uuid(binding->humidity_service,
+                                                           HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY);
+        if (!binding->humidity_char) {
+            return ESP_ERR_NOT_FOUND;
+        }
+        hap_acc_add_serv(binding->accessory, binding->humidity_service);
+    }
+
+    if (!binding->service && !binding->humidity_service) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    hap_add_bridged_accessory(binding->accessory, hap_get_unique_aid(device->id));
+
+    s_output_binding_count++;
+    return ESP_OK;
+}
+
 esp_err_t hk_bridge_start(void)
 {
     hap_acc_t *bridge;
@@ -410,8 +674,21 @@ esp_err_t hk_bridge_start(void)
         switch (device->kind) {
             case APP_DEVICE_KIND_SWITCH:
             case APP_DEVICE_KIND_LIGHT:
+            case APP_DEVICE_KIND_FAN:
             case APP_DEVICE_KIND_OUTLET:
                 err = hk_add_output_accessory(profile, device);
+                if (err != ESP_OK) {
+                    return err;
+                }
+                break;
+            case APP_DEVICE_KIND_LOCK:
+                err = hk_add_lock_accessory(profile, device);
+                if (err != ESP_OK) {
+                    return err;
+                }
+                break;
+            case APP_DEVICE_KIND_SENSOR:
+                err = hk_add_sensor_accessory(profile, device);
                 if (err != ESP_OK) {
                     return err;
                 }
@@ -436,7 +713,7 @@ esp_err_t hk_bridge_start(void)
     }
     hap_start();
 
-    ESP_LOGI(TAG, "HomeKit bridge started with %u bridged output accessory(ies)",
+    ESP_LOGI(TAG, "HomeKit bridge started with %u bridged accessory(ies)",
              (unsigned int) s_output_binding_count);
 
     return ESP_OK;

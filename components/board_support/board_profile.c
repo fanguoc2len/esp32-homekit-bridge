@@ -2,6 +2,30 @@
 
 #include "board_profile.h"
 
+#ifndef CONFIG_SMARTHOME_LOCK_ID
+#define CONFIG_SMARTHOME_LOCK_ID "front_door_lock"
+#endif
+
+#ifndef CONFIG_SMARTHOME_LOCK_NAME
+#define CONFIG_SMARTHOME_LOCK_NAME "Front Door Lock"
+#endif
+
+#ifndef CONFIG_SMARTHOME_ENV_SENSOR_ID
+#define CONFIG_SMARTHOME_ENV_SENSOR_ID "environment_sensor"
+#endif
+
+#ifndef CONFIG_SMARTHOME_ENV_SENSOR_NAME
+#define CONFIG_SMARTHOME_ENV_SENSOR_NAME "Room Climate"
+#endif
+
+#ifndef CONFIG_SMARTHOME_ENV_TEMPERATURE_C_X10
+#define CONFIG_SMARTHOME_ENV_TEMPERATURE_C_X10 275
+#endif
+
+#ifndef CONFIG_SMARTHOME_ENV_HUMIDITY_PERCENT_X10
+#define CONFIG_SMARTHOME_ENV_HUMIDITY_PERCENT_X10 650
+#endif
+
 #ifdef CONFIG_SMARTHOME_SWITCH_ACTIVE_HIGH
 #define SMARTHOME_CFG_SWITCH_ACTIVE_HIGH true
 #else
@@ -12,6 +36,42 @@
 #define SMARTHOME_CFG_OUTPUT_BOOT_ON true
 #else
 #define SMARTHOME_CFG_OUTPUT_BOOT_ON false
+#endif
+
+#ifdef CONFIG_SMARTHOME_ENABLE_VIRTUAL_LOCK
+#define SMARTHOME_CFG_ENABLE_VIRTUAL_LOCK true
+#else
+#define SMARTHOME_CFG_ENABLE_VIRTUAL_LOCK false
+#endif
+
+#ifdef CONFIG_SMARTHOME_LOCK_BOOT_LOCKED
+#define SMARTHOME_CFG_LOCK_BOOT_LOCKED true
+#else
+#define SMARTHOME_CFG_LOCK_BOOT_LOCKED false
+#endif
+
+#ifdef CONFIG_SMARTHOME_ENABLE_ENV_SENSOR
+#define SMARTHOME_CFG_ENABLE_ENV_SENSOR true
+#else
+#define SMARTHOME_CFG_ENABLE_ENV_SENSOR false
+#endif
+
+#ifdef CONFIG_SMARTHOME_ENV_SENSOR_TEMPERATURE
+#define SMARTHOME_CFG_ENV_SENSOR_TEMPERATURE true
+#else
+#define SMARTHOME_CFG_ENV_SENSOR_TEMPERATURE false
+#endif
+
+#ifdef CONFIG_SMARTHOME_ENV_SENSOR_HUMIDITY
+#define SMARTHOME_CFG_ENV_SENSOR_HUMIDITY true
+#else
+#define SMARTHOME_CFG_ENV_SENSOR_HUMIDITY false
+#endif
+
+#ifdef CONFIG_SMARTHOME_ENV_SENSOR_SIMULATOR
+#define SMARTHOME_CFG_ENV_SENSOR_SIMULATOR true
+#else
+#define SMARTHOME_CFG_ENV_SENSOR_SIMULATOR false
 #endif
 
 #ifdef CONFIG_SMARTHOME_PRIMARY_OUTPUT_DRIVER_NEOPIXEL
@@ -50,6 +110,22 @@ static const board_profile_t s_board_profile = {
         .active_high = SMARTHOME_CFG_SWITCH_ACTIVE_HIGH,
         .boot_on = SMARTHOME_CFG_OUTPUT_BOOT_ON,
         .enabled = true,
+    },
+    .door_lock = {
+        .id = CONFIG_SMARTHOME_LOCK_ID,
+        .name = CONFIG_SMARTHOME_LOCK_NAME,
+        .enabled = SMARTHOME_CFG_ENABLE_VIRTUAL_LOCK,
+        .boot_locked = SMARTHOME_CFG_LOCK_BOOT_LOCKED,
+    },
+    .environment_sensor = {
+        .id = CONFIG_SMARTHOME_ENV_SENSOR_ID,
+        .name = CONFIG_SMARTHOME_ENV_SENSOR_NAME,
+        .enabled = SMARTHOME_CFG_ENABLE_ENV_SENSOR,
+        .supports_temperature = SMARTHOME_CFG_ENV_SENSOR_TEMPERATURE,
+        .supports_humidity = SMARTHOME_CFG_ENV_SENSOR_HUMIDITY,
+        .simulator_enabled = SMARTHOME_CFG_ENV_SENSOR_SIMULATOR,
+        .initial_temperature_c = CONFIG_SMARTHOME_ENV_TEMPERATURE_C_X10 / 10.0f,
+        .initial_humidity_percent = CONFIG_SMARTHOME_ENV_HUMIDITY_PERCENT_X10 / 10.0f,
     },
 };
 

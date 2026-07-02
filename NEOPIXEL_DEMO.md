@@ -11,6 +11,7 @@ to Apple Home as a real RGB `Lightbulb`.
 - Lets Apple Home change `Hue`
 - Lets Apple Home change `Saturation`
 - Exposes a separate HomeKit switch to toggle rainbow effect
+- Also exposes the virtual door lock and room climate scaffolds by default
 
 ## Hardware
 
@@ -31,7 +32,7 @@ single-pixel desk demo, many ESP32 boards still work directly on the data line.
 
 ```bash
 cd /home/fanguoc2len/code/DoAn2-homekit
-export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.neopixel_demo.defaults"
+export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.led_demo.defaults;sdkconfig.neopixel_demo.defaults"
 ./idf.sh set-target esp32
 ./idf.sh menuconfig
 ./idf.sh build
@@ -72,12 +73,15 @@ After Wi-Fi is ready, the serial monitor prints:
 - HomeKit setup ID
 - HomeKit QR
 
-Inside Apple Home, the accessory should now support:
+Inside Apple Home, the RGB light accessory should now support:
 
 - tap on/off
 - brightness slider
 - color picker
 - a separate `Rainbow` switch accessory for the effect
+
+The virtual lock and room climate accessories should also appear unless disabled
+under `Virtual migration devices`.
 When those controls change in Apple Home, the NeoPixel should follow:
 
 - light tile: static color and brightness

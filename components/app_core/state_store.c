@@ -34,7 +34,9 @@ static bool state_store_state_equal(const app_device_state_t *lhs, const app_dev
         && lhs->rotation_speed == rhs->rotation_speed
         && lhs->effect_rainbow == rhs->effect_rainbow
         && lhs->temperature_c == rhs->temperature_c
-        && lhs->humidity_percent == rhs->humidity_percent;
+        && lhs->humidity_percent == rhs->humidity_percent
+        && lhs->lock_current_state == rhs->lock_current_state
+        && lhs->lock_target_state == rhs->lock_target_state;
 }
 
 static state_entry_t *state_store_find_entry(const char *device_id)
@@ -80,12 +82,23 @@ esp_err_t state_store_init(void)
         s_entries[i].device = device_registry_get(i);
         s_entries[i].used = (s_entries[i].device != NULL);
         if (s_entries[i].used) {
+            uint8_t lock_target = s_entries[i].device->initial_lock_target_state;
+
             s_entries[i].state.on = s_entries[i].device->boot_on;
             s_entries[i].state.brightness = 100;
             s_entries[i].state.hue = 0.0f;
             s_entries[i].state.saturation = 0.0f;
             s_entries[i].state.rotation_speed = s_entries[i].device->boot_on ? 100 : 0;
             s_entries[i].state.effect_rainbow = false;
+            s_entries[i].state.temperature_c = s_entries[i].device->initial_temperature_c;
+            s_entries[i].state.humidity_percent = s_entries[i].device->initial_humidity_percent;
+            if (lock_target != APP_LOCK_TARGET_UNSECURED) {
+                lock_target = APP_LOCK_TARGET_SECURED;
+            }
+            s_entries[i].state.lock_target_state = lock_target;
+            s_entries[i].state.lock_current_state = lock_target == APP_LOCK_TARGET_SECURED
+                ? APP_LOCK_CURRENT_SECURED
+                : APP_LOCK_CURRENT_UNSECURED;
         }
     }
 

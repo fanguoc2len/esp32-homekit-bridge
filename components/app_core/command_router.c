@@ -7,6 +7,8 @@
 #include <esp_check.h>
 #include <esp_log.h>
 
+#include "sdkconfig.h"
+
 #include "command_router.h"
 #include "device_registry.h"
 #include "drv_gpio_switch.h"
@@ -16,6 +18,12 @@
 static const char *TAG = "command_router";
 static const uint16_t EFFECT_HUE_STEP = 4;
 static const uint32_t EFFECT_INTERVAL_MS = 40;
+
+#ifdef CONFIG_SMARTHOME_ENV_SENSOR_SIM_INTERVAL_MS
+#define SENSOR_SIM_INTERVAL_MS CONFIG_SMARTHOME_ENV_SENSOR_SIM_INTERVAL_MS
+#else
+#define SENSOR_SIM_INTERVAL_MS 30000
+#endif
 
 typedef struct {
     bool used;
@@ -136,6 +144,17 @@ static uint8_t command_router_rgb_channel(float value)
         return 255;
     }
     return (uint8_t) lroundf(value);
+}
+
+static float command_router_clamp_float(float value, float min_value, float max_value)
+{
+    if (value < min_value) {
+        return min_value;
+    }
+    if (value > max_value) {
+        return max_value;
+    }
+    return value;
 }
 
 static void command_router_hsv_to_rgb(const app_device_state_t *state,
@@ -275,6 +294,48 @@ static void command_router_neopixel_effect_task(void *arg)
     }
 }
 
+static void command_router_sensor_simulator_task(void *arg)
+{
+    uint32_t tick = 0;
+
+    (void) arg;
+
+    while (true) {
+        size_t i;
+        int temp_phase = (int) (tick % 10U) - 5;
+        int humidity_phase = (int) ((tick + 3U) % 12U) - 6;
+
+        for (i = 0; i < device_registry_count(); i++) {
+            const app_device_config_t *device = device_registry_get(i);
+            app_device_state_t state = {0};
+
+            if (!device || device->kind != APP_DEVICE_KIND_SENSOR || !device->simulator_enabled) {
+                continue;
+            }
+            if (state_store_get(device->id, &state) != ESP_OK) {
+                continue;
+            }
+
+            if (device->supports_temperature) {
+                state.temperature_c = command_router_clamp_float(
+                    device->initial_temperature_c + (temp_phase * 0.2f),
+                    -40.0f,
+                    100.0f);
+            }
+            if (device->supports_humidity) {
+                state.humidity_percent = command_router_clamp_float(
+                    device->initial_humidity_percent + (humidity_phase * 0.5f),
+                    0.0f,
+                    100.0f);
+            }
+            command_router_update_sensor_state(device->id, &state, APP_STATE_SOURCE_DEVICE);
+        }
+
+        tick++;
+        vTaskDelay(pdMS_TO_TICKS(SENSOR_SIM_INTERVAL_MS));
+    }
+}
+
 static esp_err_t command_router_apply_effect_switch(const char *device_id,
                                                     bool on,
                                                     app_state_source_t source)
@@ -319,6 +380,7 @@ static esp_err_t command_router_apply_effect_switch(const char *device_id,
 esp_err_t command_router_init(void)
 {
     size_t i;
+    bool start_sensor_simulator = false;
 
     memset(s_effect_slots, 0, sizeof(s_effect_slots));
     for (i = 0; i < device_registry_count(); i++) {
@@ -368,6 +430,35 @@ esp_err_t command_router_init(void)
                 }
                 break;
             }
+            case APP_DEVICE_KIND_FAN:
+            {
+                if (device->output_driver != APP_OUTPUT_DRIVER_GPIO_SWITCH) {
+                    return ESP_ERR_NOT_SUPPORTED;
+                }
+
+                drv_gpio_switch_config_t driver_config = make_switch_config(device);
+
+                err = drv_gpio_switch_init(&driver_config);
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to init fan driver for %s", device->id);
+                    return err;
+                }
+                err = command_router_sync_from_hardware(device->id, APP_STATE_SOURCE_BOOT);
+                if (err != ESP_OK) {
+                    return err;
+                }
+                break;
+            }
+            case APP_DEVICE_KIND_LOCK:
+            case APP_DEVICE_KIND_SENSOR:
+                err = command_router_sync_from_hardware(device->id, APP_STATE_SOURCE_BOOT);
+                if (err != ESP_OK) {
+                    return err;
+                }
+                if (device->kind == APP_DEVICE_KIND_SENSOR && device->simulator_enabled) {
+                    start_sensor_simulator = true;
+                }
+                break;
             default:
                 ESP_LOGW(TAG, "Device kind %d not wired yet for %s", device->kind, device->id);
                 break;
@@ -385,6 +476,17 @@ esp_err_t command_router_init(void)
                 return ESP_ERR_NO_MEM;
             }
             break;
+        }
+    }
+
+    if (start_sensor_simulator) {
+        if (xTaskCreate(command_router_sensor_simulator_task,
+                        "sensor_simulator",
+                        4096,
+                        NULL,
+                        3,
+                        NULL) != pdPASS) {
+            return ESP_ERR_NO_MEM;
         }
     }
 
@@ -493,6 +595,60 @@ esp_err_t command_router_apply_fan_state(const char *device_id,
     return state_store_set_state(device->id, &next_state, source);
 }
 
+esp_err_t command_router_apply_lock_state(const char *device_id,
+                                          const app_device_state_t *state,
+                                          app_state_source_t source)
+{
+    const app_device_config_t *device = device_registry_find(device_id);
+    app_device_state_t next_state;
+
+    if (!device || !state) {
+        return device ? ESP_ERR_INVALID_ARG : ESP_ERR_NOT_FOUND;
+    }
+    if (device->kind != APP_DEVICE_KIND_LOCK || !device->supports_lock) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    next_state = *state;
+    if (next_state.lock_target_state != APP_LOCK_TARGET_UNSECURED) {
+        next_state.lock_target_state = APP_LOCK_TARGET_SECURED;
+    }
+    next_state.lock_current_state = next_state.lock_target_state == APP_LOCK_TARGET_SECURED
+        ? APP_LOCK_CURRENT_SECURED
+        : APP_LOCK_CURRENT_UNSECURED;
+
+    return state_store_set_state(device->id, &next_state, source);
+}
+
+esp_err_t command_router_update_sensor_state(const char *device_id,
+                                             const app_device_state_t *state,
+                                             app_state_source_t source)
+{
+    const app_device_config_t *device = device_registry_find(device_id);
+    app_device_state_t next_state;
+
+    if (!device || !state) {
+        return device ? ESP_ERR_INVALID_ARG : ESP_ERR_NOT_FOUND;
+    }
+    if (device->kind != APP_DEVICE_KIND_SENSOR) {
+        return ESP_ERR_NOT_SUPPORTED;
+    }
+
+    next_state = *state;
+    if (device->supports_temperature) {
+        next_state.temperature_c = command_router_clamp_float(next_state.temperature_c, -40.0f, 100.0f);
+    } else {
+        next_state.temperature_c = 0.0f;
+    }
+    if (device->supports_humidity) {
+        next_state.humidity_percent = command_router_clamp_float(next_state.humidity_percent, 0.0f, 100.0f);
+    } else {
+        next_state.humidity_percent = 0.0f;
+    }
+
+    return state_store_set_state(device->id, &next_state, source);
+}
+
 esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_source_t source)
 {
     const app_device_config_t *device = device_registry_find(device_id);
@@ -535,6 +691,15 @@ esp_err_t command_router_apply_on(const char *device_id, bool on, app_state_sour
         }
         state.on = on;
         return command_router_apply_fan_state(device->id, &state, source);
+    }
+
+    if (device->kind == APP_DEVICE_KIND_LOCK && device->supports_lock) {
+        if (state_store_get(device->id, &state) != ESP_OK) {
+            state.lock_target_state = on ? APP_LOCK_TARGET_UNSECURED : APP_LOCK_TARGET_SECURED;
+        } else {
+            state.lock_target_state = on ? APP_LOCK_TARGET_UNSECURED : APP_LOCK_TARGET_SECURED;
+        }
+        return command_router_apply_lock_state(device->id, &state, source);
     }
 
     switch (device->kind) {
@@ -597,6 +762,21 @@ esp_err_t command_router_sync_from_hardware(const char *device_id, app_state_sou
             state.rotation_speed = state.on ? 100 : 0;
         }
         return command_router_apply_fan_state(device->id, &state, source);
+    }
+
+    if (device->kind == APP_DEVICE_KIND_LOCK && device->supports_lock) {
+        if (state_store_get(device->id, &state) != ESP_OK) {
+            state.lock_target_state = device->initial_lock_target_state;
+        }
+        return command_router_apply_lock_state(device->id, &state, source);
+    }
+
+    if (device->kind == APP_DEVICE_KIND_SENSOR) {
+        if (state_store_get(device->id, &state) != ESP_OK) {
+            state.temperature_c = device->initial_temperature_c;
+            state.humidity_percent = device->initial_humidity_percent;
+        }
+        return command_router_update_sensor_state(device->id, &state, source);
     }
 
     switch (device->kind) {

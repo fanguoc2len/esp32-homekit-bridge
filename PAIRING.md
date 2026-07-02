@@ -14,6 +14,9 @@ For the open-source SDK path in this repository:
 - Fallback onboarding: hardcoded Wi-Fi credentials
 - Not implemented here as the default path: Apple WAC provisioning, because that requires the MFi SDK path
 
+`sdkconfig` is ignored by Git because it can contain local Wi-Fi credentials.
+Commit shared defaults through `sdkconfig.defaults` or the preset files instead.
+
 ## First Boot Flow
 
 1. Flash the firmware.

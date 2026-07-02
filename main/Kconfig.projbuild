@@ -161,6 +161,90 @@ config SMARTHOME_LOCAL_STATE_SELF_TEST_INTERVAL_MS
     help
         Delay between firmware-side toggles when the self-test is enabled.
 
+menu "Virtual migration devices"
+
+config SMARTHOME_ENABLE_VIRTUAL_LOCK
+    bool "Expose a virtual HomeKit door lock"
+    default y
+    help
+        Adds a Lock Mechanism accessory so the migration has a complete
+        door/lock HomeKit path before a physical lock actuator is installed.
+
+config SMARTHOME_LOCK_ID
+    string "Virtual lock logical ID"
+    default "front_door_lock"
+    depends on SMARTHOME_ENABLE_VIRTUAL_LOCK
+
+config SMARTHOME_LOCK_NAME
+    string "Virtual lock display name"
+    default "Front Door Lock"
+    depends on SMARTHOME_ENABLE_VIRTUAL_LOCK
+
+config SMARTHOME_LOCK_BOOT_LOCKED
+    bool "Virtual lock boots secured"
+    default y
+    depends on SMARTHOME_ENABLE_VIRTUAL_LOCK
+
+config SMARTHOME_ENABLE_ENV_SENSOR
+    bool "Expose a virtual temperature/humidity sensor"
+    default y
+    help
+        Adds HomeKit Temperature Sensor and Humidity Sensor services. This is
+        a migration scaffold for a future DHT/SHT/BME driver and can simulate
+        realistic values when hardware is not available.
+
+config SMARTHOME_ENV_SENSOR_ID
+    string "Environment sensor logical ID"
+    default "environment_sensor"
+    depends on SMARTHOME_ENABLE_ENV_SENSOR
+
+config SMARTHOME_ENV_SENSOR_NAME
+    string "Environment sensor display name"
+    default "Room Climate"
+    depends on SMARTHOME_ENABLE_ENV_SENSOR
+
+config SMARTHOME_ENV_SENSOR_TEMPERATURE
+    bool "Expose temperature service"
+    default y
+    depends on SMARTHOME_ENABLE_ENV_SENSOR
+
+config SMARTHOME_ENV_TEMPERATURE_C_X10
+    int "Initial temperature in Celsius x10"
+    range -400 1000
+    default 275
+    depends on SMARTHOME_ENABLE_ENV_SENSOR && SMARTHOME_ENV_SENSOR_TEMPERATURE
+    help
+        Example: 275 means 27.5 degrees Celsius.
+
+config SMARTHOME_ENV_SENSOR_HUMIDITY
+    bool "Expose humidity service"
+    default y
+    depends on SMARTHOME_ENABLE_ENV_SENSOR
+
+config SMARTHOME_ENV_HUMIDITY_PERCENT_X10
+    int "Initial humidity percent x10"
+    range 0 1000
+    default 650
+    depends on SMARTHOME_ENABLE_ENV_SENSOR && SMARTHOME_ENV_SENSOR_HUMIDITY
+    help
+        Example: 650 means 65.0 percent relative humidity.
+
+config SMARTHOME_ENV_SENSOR_SIMULATOR
+    bool "Simulate changing sensor readings"
+    default y
+    depends on SMARTHOME_ENABLE_ENV_SENSOR
+    help
+        Periodically nudges the virtual readings so HomeKit event updates can
+        be tested without a physical sensor board.
+
+config SMARTHOME_ENV_SENSOR_SIM_INTERVAL_MS
+    int "Sensor simulator interval (ms)"
+    range 5000 300000
+    default 30000
+    depends on SMARTHOME_ENV_SENSOR_SIMULATOR
+
+endmenu
+
 config SMARTHOME_HAP_SETUP_CODE
     string "HomeKit setup code"
     default "111-22-333"

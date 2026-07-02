@@ -49,6 +49,7 @@ static bool s_wifi_prov_cred_failed;
 #define WIFI_FAILED_BIT    BIT1
 #define WIFI_MAX_RETRIES   10
 
+#if CONFIG_SMARTHOME_WIFI_ONBOARDING_PROVISIONING
 #define PROV_QR_VERSION "v1"
 #define PROV_QR_BASE_URL "https://espressif.github.io/esp-jumpstart/qrcode.html"
 
@@ -105,6 +106,7 @@ static esp_err_t wifi_prov_mgr_get_pop(char *pop, size_t max_len)
     snprintf(pop, max_len, "%02x%02x%02x%02x", mac[2], mac[3], mac[4], mac[5]);
     return ESP_OK;
 }
+#endif
 
 static void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {

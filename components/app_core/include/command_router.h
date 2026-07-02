@@ -11,5 +11,11 @@ esp_err_t command_router_apply_light_state(const char *device_id,
 esp_err_t command_router_apply_fan_state(const char *device_id,
                                          const app_device_state_t *state,
                                          app_state_source_t source);
+esp_err_t command_router_apply_lock_state(const char *device_id,
+                                          const app_device_state_t *state,
+                                          app_state_source_t source);
+esp_err_t command_router_update_sensor_state(const char *device_id,
+                                             const app_device_state_t *state,
+                                             app_state_source_t source);
 esp_err_t command_router_sync_from_hardware(const char *device_id, app_state_source_t source);
 void command_router_sync_all_from_hardware(app_state_source_t source);

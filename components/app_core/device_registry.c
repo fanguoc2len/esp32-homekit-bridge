@@ -36,8 +36,15 @@ esp_err_t device_registry_init(void)
             .supports_saturation = supports_color,
             .supports_rotation_speed = supports_rotation_speed,
             .supports_effect_rainbow = supports_color,
+            .supports_temperature = false,
+            .supports_humidity = false,
+            .supports_lock = false,
+            .simulator_enabled = false,
             .is_effect_switch = false,
             .linked_device_id = NULL,
+            .initial_temperature_c = 0.0f,
+            .initial_humidity_percent = 0.0f,
+            .initial_lock_target_state = APP_LOCK_TARGET_SECURED,
         };
 
         if (supports_color && s_device_count < APP_MAX_DEVICES) {
@@ -62,10 +69,76 @@ esp_err_t device_registry_init(void)
                 .supports_saturation = false,
                 .supports_rotation_speed = false,
                 .supports_effect_rainbow = false,
+                .supports_temperature = false,
+                .supports_humidity = false,
+                .supports_lock = false,
+                .simulator_enabled = false,
                 .is_effect_switch = true,
                 .linked_device_id = profile->primary_switch.id,
+                .initial_temperature_c = 0.0f,
+                .initial_humidity_percent = 0.0f,
+                .initial_lock_target_state = APP_LOCK_TARGET_SECURED,
             };
         }
+    }
+
+    if (profile->door_lock.enabled && s_device_count < APP_MAX_DEVICES) {
+        s_devices[s_device_count++] = (app_device_config_t) {
+            .id = profile->door_lock.id,
+            .name = profile->door_lock.name,
+            .kind = APP_DEVICE_KIND_LOCK,
+            .gpio = GPIO_NUM_NC,
+            .output_driver = APP_OUTPUT_DRIVER_GPIO_SWITCH,
+            .active_high = true,
+            .boot_on = false,
+            .supports_on = false,
+            .supports_brightness = false,
+            .supports_hue = false,
+            .supports_saturation = false,
+            .supports_rotation_speed = false,
+            .supports_effect_rainbow = false,
+            .supports_temperature = false,
+            .supports_humidity = false,
+            .supports_lock = true,
+            .simulator_enabled = false,
+            .is_effect_switch = false,
+            .linked_device_id = NULL,
+            .initial_temperature_c = 0.0f,
+            .initial_humidity_percent = 0.0f,
+            .initial_lock_target_state = profile->door_lock.boot_locked
+                ? APP_LOCK_TARGET_SECURED
+                : APP_LOCK_TARGET_UNSECURED,
+        };
+    }
+
+    if (profile->environment_sensor.enabled
+        && (profile->environment_sensor.supports_temperature
+            || profile->environment_sensor.supports_humidity)
+        && s_device_count < APP_MAX_DEVICES) {
+        s_devices[s_device_count++] = (app_device_config_t) {
+            .id = profile->environment_sensor.id,
+            .name = profile->environment_sensor.name,
+            .kind = APP_DEVICE_KIND_SENSOR,
+            .gpio = GPIO_NUM_NC,
+            .output_driver = APP_OUTPUT_DRIVER_GPIO_SWITCH,
+            .active_high = true,
+            .boot_on = false,
+            .supports_on = false,
+            .supports_brightness = false,
+            .supports_hue = false,
+            .supports_saturation = false,
+            .supports_rotation_speed = false,
+            .supports_effect_rainbow = false,
+            .supports_temperature = profile->environment_sensor.supports_temperature,
+            .supports_humidity = profile->environment_sensor.supports_humidity,
+            .supports_lock = false,
+            .simulator_enabled = profile->environment_sensor.simulator_enabled,
+            .is_effect_switch = false,
+            .linked_device_id = NULL,
+            .initial_temperature_c = profile->environment_sensor.initial_temperature_c,
+            .initial_humidity_percent = profile->environment_sensor.initial_humidity_percent,
+            .initial_lock_target_state = APP_LOCK_TARGET_SECURED,
+        };
     }
 
     return ESP_OK;

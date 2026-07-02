@@ -1,5 +1,6 @@
 build/
 build-*/
+sdkconfig
 sdkconfig.old
 *.bin
 *.elf

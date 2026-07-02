@@ -7,6 +7,7 @@ This is the fastest path in this repository to get one ESP32 LED visible in Appl
 - Exposes one GPIO output as a native HomeKit `Lightbulb`
 - Lets Apple Home toggle that output on and off
 - Prints pairing info to the serial monitor after Wi-Fi onboarding
+- Also exposes the virtual door lock and room climate scaffolds by default
 
 If you want full RGB color controls instead of simple on/off, use `NEOPIXEL_DEMO.md`.
 
@@ -80,6 +81,8 @@ Open `DoAn2 HomeKit Config` and confirm:
 - `Primary switch is active high`: keep enabled unless your LED or relay is active-low
 - `Primary output HomeKit service type`: `Lightbulb`
 - `Primary output boots ON`: disabled
+- `Virtual migration devices`: keep enabled for a complete interview/demo bridge,
+  or disable them if you only want the LED accessory
 
 ## How pairing works
 

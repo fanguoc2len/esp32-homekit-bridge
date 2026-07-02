@@ -9,6 +9,7 @@ This demo exposes one ESP32 output as a HomeKit `Fan` with native
 - Lets Apple Home toggle the fan on and off
 - Lets Apple Home change `RotationSpeed`
 - Maps any speed above zero to an active hardware output line
+- Also exposes the virtual door lock and room climate scaffolds by default
 
 ## Hardware
 
@@ -46,6 +47,8 @@ Open `DoAn2 HomeKit Config` and confirm:
 - `Primary output hardware driver`: `Plain GPIO on/off`
 - `Primary output HomeKit service type`: `Fan`
 - `Primary output boots ON`: optional, usually keep off
+- `Virtual migration devices`: keep enabled for a complete interview/demo bridge,
+  or disable them if you only want the fan accessory
 
 If you are only bench-testing with an onboard LED, leave the GPIO at `2` if your
 board uses that pin for a controllable LED.
@@ -59,6 +62,8 @@ Inside Apple Home, the accessory should show up as a fan. You should be able to:
 
 On this milestone, changing the slider updates HomeKit state on the ESP32 and logs
 the selected speed, but the default GPIO driver only turns the output line on or off.
+The virtual lock and room climate accessories should also appear unless disabled
+under `Virtual migration devices`.
 
 ## When to use this demo
 

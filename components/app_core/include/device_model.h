@@ -5,8 +5,16 @@
 
 #include "driver/gpio.h"
 
-#define APP_MAX_DEVICES 8
+#define APP_MAX_DEVICES 12
 #define APP_MAX_OBSERVERS 4
+
+#define APP_LOCK_CURRENT_SECURED 0
+#define APP_LOCK_CURRENT_UNSECURED 1
+#define APP_LOCK_CURRENT_JAMMED 2
+#define APP_LOCK_CURRENT_UNKNOWN 3
+
+#define APP_LOCK_TARGET_SECURED 0
+#define APP_LOCK_TARGET_UNSECURED 1
 
 typedef enum {
     APP_DEVICE_KIND_SWITCH = 0,
@@ -38,6 +46,8 @@ typedef struct {
     bool effect_rainbow;
     float temperature_c;
     float humidity_percent;
+    uint8_t lock_current_state;
+    uint8_t lock_target_state;
 } app_device_state_t;
 
 typedef struct {
@@ -54,6 +64,13 @@ typedef struct {
     bool supports_saturation;
     bool supports_rotation_speed;
     bool supports_effect_rainbow;
+    bool supports_temperature;
+    bool supports_humidity;
+    bool supports_lock;
+    bool simulator_enabled;
     bool is_effect_switch;
     const char *linked_device_id;
+    float initial_temperature_c;
+    float initial_humidity_percent;
+    uint8_t initial_lock_target_state;
 } app_device_config_t;

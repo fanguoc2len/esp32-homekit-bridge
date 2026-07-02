@@ -49,12 +49,13 @@ Not a clean native HomeKit match:
 Recommendation:
 
 - migrate on/off + brightness + color first
-- keep custom effect modes as optional firmware-side extensions outside the
-  standard Apple Home UI
+- expose custom effect modes as linked virtual switches when a simple Home UI
+  control is useful
 
 Status in this repo:
 
-- on/off + brightness + hue + saturation are now implemented for the NeoPixel driver path
+- on/off + brightness + hue + saturation are implemented for the NeoPixel driver path
+- rainbow effect is implemented as a linked virtual switch
 
 ### 2. Fan
 
@@ -73,6 +74,11 @@ Native characteristics that map well:
 - `On`
 - `RotationSpeed`
 
+Status in this repo:
+
+- `Fan` and `RotationSpeed` are implemented
+- current hardware scaffold maps any speed above zero to a relay output
+
 ### 3. Door / Servo Door
 
 Original capabilities:
@@ -89,6 +95,11 @@ Recommendation:
 
 - choose the HomeKit service based on real product meaning, not just the servo
 
+Status in this repo:
+
+- `LockMechanism` is implemented as a virtual door lock scaffold
+- a real actuator driver can replace the scaffold once hardware is selected
+
 ### 4. Temperature / Humidity
 
 Original capabilities:
@@ -102,6 +113,11 @@ Best HomeKit targets:
 - `HumiditySensor`
 
 This is one of the cleanest migrations.
+
+Status in this repo:
+
+- `TemperatureSensor` and `HumiditySensor` are implemented as virtual services
+- a simulator updates readings so HomeKit event sync can be checked without hardware
 
 ### 5. Speaker / Buzzer / JQ6500
 
@@ -139,8 +155,8 @@ Recommendation:
 1. Single light path
 2. NeoPixel RGB light path
 3. Fan speed path
-4. Temperature / humidity path
-5. Door / lock path
+4. Door / lock scaffold
+5. Temperature / humidity scaffold
 6. Optional speaker fallback path
 
 ## Architecture Notes
