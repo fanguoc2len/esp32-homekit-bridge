@@ -47,7 +47,7 @@ Open `DoAn2 HomeKit Config` and confirm:
 - `Primary output hardware driver`: `Plain GPIO on/off`
 - `Primary output HomeKit service type`: `Fan`
 - `Primary output boots ON`: optional, usually keep off
-- `Virtual migration devices`: keep enabled for a complete interview/demo bridge,
+- `Virtual migration devices`: keep enabled for a complete multi-accessory bridge,
   or disable them if you only want the fan accessory
 
 If you are only bench-testing with an onboard LED, leave the GPIO at `2` if your
