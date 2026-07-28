@@ -14,7 +14,7 @@ repeatable demo presets, and hardware-free smoke validation.
   lock, temperature, and humidity paths
 - GPIO relay output driver plus WS2812/NeoPixel RGB driver
 - Native HomeKit brightness, hue, saturation, fan rotation speed, and lock state
-- Virtual lock and climate sensor scaffolds for interview/demo runs without a kit
+- Virtual lock and climate sensor scaffolds for hardware-independent system demos
 - Wi-Fi onboarding through Espressif Unified Provisioning, with hardcoded
   credentials kept only as a bench-test option
 - GitHub Actions workflow for LED, fan, and NeoPixel preset builds
