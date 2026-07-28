@@ -21,13 +21,20 @@ repeatable demo presets, and hardware-free smoke validation.
 
 ## Architecture
 
-```text
-main/app_main.c
-  -> connectivity          Wi-Fi onboarding and provisioning
-  -> board_support         compile-time board/profile configuration
-  -> app_core              registry, state store, command routing
-  -> drivers               GPIO relay and NeoPixel hardware adapters
-  -> homekit_bridge        Apple Home services and characteristic callbacks
+```mermaid
+flowchart LR
+    Provisioning["Wi-Fi provisioning"] --> Startup["app_main startup"]
+    Profile["Board and demo profile"] --> Registry["Device registry"]
+    Startup --> Registry
+    Registry --> Bridge["HomeKit bridge"]
+    Home["Apple Home"] <-->|"characteristic events"| Bridge
+    Bridge -->|"validated writes"| Router["Command router"]
+    Router --> Drivers["GPIO / NeoPixel drivers"]
+    Router --> Virtual["Virtual lock / climate scaffolds"]
+    Drivers --> Hardware["Relay / WS2812 hardware"]
+    Drivers --> Store["State store"]
+    Virtual --> Store
+    Store -->|"observer updates"| Bridge
 ```
 
 The app core is intentionally independent from HomeKit-specific callbacks. The
