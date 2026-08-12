@@ -50,7 +50,7 @@ Only continue when the Doctor command reports a valid setup.
 Then open:
 
 ```text
-/home/fanguoc2len/code/DoAn2-homekit
+/path/to/esp32-homekit-bridge
 ```
 
 After that you can either:
@@ -63,7 +63,7 @@ After that you can either:
 From this repository:
 
 ```bash
-cd /home/fanguoc2len/code/DoAn2-homekit
+cd /path/to/esp32-homekit-bridge
 export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.led_demo.defaults"
 idf.py set-target esp32
 idf.py menuconfig

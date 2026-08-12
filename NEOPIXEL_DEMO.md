@@ -31,7 +31,7 @@ single-pixel desk demo, many ESP32 boards still work directly on the data line.
 ## Build flow
 
 ```bash
-cd /home/fanguoc2len/code/DoAn2-homekit
+cd /path/to/esp32-homekit-bridge
 export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.led_demo.defaults;sdkconfig.neopixel_demo.defaults"
 ./idf.sh set-target esp32
 ./idf.sh menuconfig

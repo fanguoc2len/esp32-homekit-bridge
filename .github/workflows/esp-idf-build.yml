@@ -20,7 +20,10 @@ jobs:
 
       - name: Fetch ESP HomeKit SDK
         run: |
-          git clone --depth 1 --recursive https://github.com/espressif/esp-homekit-sdk.git /opt/esp-homekit-sdk
+          sdk_revision=676fabac4a4a05184be020611cb069faa0016411
+          git clone --filter=blob:none --no-checkout https://github.com/espressif/esp-homekit-sdk.git /opt/esp-homekit-sdk
+          git -C /opt/esp-homekit-sdk checkout "$sdk_revision"
+          git -C /opt/esp-homekit-sdk submodule update --init --recursive --depth 1
 
       - name: Secret scan
         run: |
