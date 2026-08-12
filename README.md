@@ -2,7 +2,7 @@
 
 [![ESP-IDF Build](https://github.com/fanguoc2len/esp32-homekit-bridge/actions/workflows/esp-idf-build.yml/badge.svg)](https://github.com/fanguoc2len/esp32-homekit-bridge/actions/workflows/esp-idf-build.yml)
 
-Native Apple Home firmware for the DoAn2 smart-home migration. This repository
+Native Apple Home firmware for the smart-home platform migration. This repository
 extracts the ESP32 HomeKit work from the original Flask/Firebase/Arduino stack
 and organizes it as a standalone ESP-IDF project with clear device boundaries,
 repeatable demo presets, and hardware-free smoke validation.
