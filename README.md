@@ -1,6 +1,6 @@
-# DoAn2 HomeKit
+# ESP32 HomeKit Bridge
 
-[![ESP-IDF Build](https://github.com/fanguoc2len/DoAn2-HomeKit/actions/workflows/esp-idf-build.yml/badge.svg)](https://github.com/fanguoc2len/DoAn2-HomeKit/actions/workflows/esp-idf-build.yml)
+[![ESP-IDF Build](https://github.com/fanguoc2len/esp32-homekit-bridge/actions/workflows/esp-idf-build.yml/badge.svg)](https://github.com/fanguoc2len/esp32-homekit-bridge/actions/workflows/esp-idf-build.yml)
 
 Native Apple Home firmware for the DoAn2 smart-home migration. This repository
 extracts the ESP32 HomeKit work from the original Flask/Firebase/Arduino stack
@@ -65,6 +65,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the module map.
 export IDF_PATH=/path/to/esp-idf
 export ESP_HOMEKIT_SDK_PATH=/path/to/esp-homekit-sdk
 ```
+
+CI pins the HomeKit SDK to commit `676fabac4a4a05184be020611cb069faa0016411`
+so rebuilds do not silently change when the upstream default branch moves.
 
 This repo includes `idf.sh` for the local WSL setup used during development.
 On another machine you can run `idf.py` directly after exporting ESP-IDF.
